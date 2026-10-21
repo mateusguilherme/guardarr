@@ -20,6 +20,13 @@ curl 'localhost:8686/api/artists?q=caetano+veloso'
 
 The default port is `:8686`; override it with `GUARDARR_ADDR`.
 
+## Test
+
+```sh
+go test -race ./...             # backend
+cd frontend && npm test         # frontend
+```
+
 ## Develop
 
 One command runs backend and frontend together, with hot reload on the UI:
