@@ -1,7 +1,8 @@
 # guardarr
 
-Artist search on MusicBrainz. Go backend (pure stdlib, zero dependencies) with
-a Svelte 5 + TypeScript frontend, shipped as a single binary.
+Artist search on MusicBrainz. Go backend with a Svelte 5 + TypeScript
+frontend, shipped as a single binary. Data lives in a SQLite database through
+a pure-Go driver, so building still needs no CGO.
 
 ## Run
 
@@ -18,7 +19,9 @@ Then open <http://localhost:8686>, or hit the API directly:
 curl 'localhost:8686/api/artists?q=caetano+veloso'
 ```
 
-The default port is `:8686`; override it with `GUARDARR_ADDR`.
+The default port is `:8686`; override it with `GUARDARR_ADDR`. The database
+is created as `guardarr.db` in the working directory; override the path with
+`GUARDARR_DB`.
 
 ## Test
 

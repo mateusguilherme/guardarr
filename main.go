@@ -14,6 +14,7 @@ import (
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
 	"github.com/mateusguilherme/guardarr/internal/server"
+	"github.com/mateusguilherme/guardarr/internal/store"
 )
 
 // The compiled frontend is embedded so the whole app ships as one binary.
@@ -28,6 +29,20 @@ func main() {
 	if addr == "" {
 		addr = ":8686"
 	}
+
+	dbPath := os.Getenv("GUARDARR_DB")
+
+	if dbPath == "" {
+		dbPath = "guardarr.db"
+	}
+
+	st, err := store.Open(dbPath)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer st.Close()
 
 	dist, err := fs.Sub(frontend, "frontend/dist")
 
