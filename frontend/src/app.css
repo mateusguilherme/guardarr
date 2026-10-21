@@ -1,45 +1,209 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --accent: light-dark(#c8441f, #ff8a5c);
+  --accent-strong: light-dark(#ab3512, #ffa47c);
+  --accent-contrast: light-dark(#ffffff, #2a1208);
+  --bg: light-dark(#faf6f2, #161310);
+  --glow: light-dark(rgb(200 68 31 / 0.09), rgb(255 138 92 / 0.07));
+  --surface: light-dark(#ffffff, #201c19);
+  --text: light-dark(#262019, #efe9e3);
+  --muted: light-dark(#87796d, #a2948a);
+  --border: light-dark(#eadfd5, #37302a);
+  --ring: color-mix(in srgb, var(--accent) 25%, transparent);
+  --danger: light-dark(#b00020, #ff8a80);
+  --shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 8px 24px -12px rgb(0 0 0 / 0.18);
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
+  color: var(--text);
+  background:
+    radial-gradient(42rem 26rem at 50% -8rem, var(--glow), transparent 70%)
+    var(--bg);
 }
 
 main {
-  max-width: 40rem;
+  max-width: 38rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: clamp(1.25rem, 4vh, 2.5rem) 1rem 2rem;
 }
 
-form {
+/* hero */
+
+.hero {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+h1 {
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  margin: 0;
+  font-size: clamp(2.25rem, 7vw, 3rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.mark {
+  width: 0.95em;
+  height: 0.95em;
+  color: var(--accent);
+}
+
+.arr {
+  color: var(--accent);
+}
+
+/* search */
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.4rem 0.4rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--ring), var(--shadow);
+}
+
+.search-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  color: var(--muted);
 }
 
 input {
   flex: 1;
-  padding: 0.5rem 0.75rem;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border: none;
+  outline: none;
+  background: none;
   font: inherit;
+  font-size: 1.0625rem;
+  color: inherit;
+}
+
+input::placeholder {
+  color: var(--muted);
 }
 
 button {
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.375rem;
+  border: none;
+  border-radius: 999px;
   font: inherit;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+.spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* results */
+
+.results {
+  margin-top: 2rem;
+}
+
+.count {
+  margin: 0 0 0.75rem;
+  padding-left: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
 ul {
-  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
   padding: 0;
+  list-style: none;
 }
 
 li {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  animation: rise 0.35s backwards;
+  animation-delay: min(calc(var(--i, 0) * 40ms), 400ms);
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+
+li:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  transform: translateY(-1px);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: 50%;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.who {
+  display: grid;
+  min-width: 0;
 }
 
 .name {
@@ -47,15 +211,130 @@ li {
 }
 
 .disambiguation {
-  opacity: 0.7;
+  overflow: hidden;
   font-size: 0.875rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* skeletons */
+
+.skeletons {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 4.0625rem;
+}
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  animation: rise 0.35s backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.skeleton-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: 50%;
+}
+
+.skeleton-lines {
+  display: grid;
+  gap: 0.5rem;
   flex: 1;
 }
 
+.skeleton-line {
+  height: 0.7rem;
+  max-width: 14rem;
+  border-radius: 999px;
+}
+
+.skeleton-line.short {
+  max-width: 9rem;
+}
+
+.skeleton-avatar,
+.skeleton-line {
+  background: linear-gradient(
+    100deg,
+    var(--border) 40%,
+    color-mix(in srgb, var(--border) 45%, var(--surface)) 50%,
+    var(--border) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* notices */
+
+.notice {
+  margin-top: 2.5rem;
+  text-align: center;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice-icon {
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 0.625rem;
+  color: var(--muted);
+}
+
+.error-icon {
+  color: var(--danger);
+}
+
 .error {
-  color: light-dark(#b00020, #ff8a80);
+  font-weight: 600;
+  color: var(--danger);
 }
 
 .empty {
-  opacity: 0.7;
+  font-weight: 600;
+}
+
+.notice .hint {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
