@@ -33,7 +33,8 @@ func newApp(t *testing.T, fakeMusicBrainz http.HandlerFunc) *httptest.Server {
 	t.Cleanup(func() { st.Close() })
 
 	static := fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>guardarr</title>")},
+		"index.html":            &fstest.MapFile{Data: []byte("<!doctype html><title>guardarr</title>")},
+		"assets/index-abc12.js": &fstest.MapFile{Data: []byte("console.log('guardarr')")},
 	}
 
 	app := httptest.NewServer(server.New(musicbrainz.NewClientWithURL(fake.URL), st, static))
@@ -360,5 +361,35 @@ func TestServesTheFrontend(t *testing.T) {
 
 	if !strings.Contains(string(body), "guardarr") {
 		t.Errorf("index.html not served, got: %q", body)
+	}
+}
+
+func TestCachesHashedAssetsForever(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/assets/index-abc12.js")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	want := "public, max-age=31536000, immutable"
+
+	if got := resp.Header.Get("Cache-Control"); got != want {
+		t.Errorf("Cache-Control = %q, want %q", got, want)
+	}
+}
+
+func TestNeverCachesThePageItself(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control = %q, want %q", got, "no-cache")
 	}
 }

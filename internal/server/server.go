@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
 	"github.com/mateusguilherme/guardarr/internal/store"
@@ -21,9 +22,29 @@ func New(mb *musicbrainz.Client, st *store.Store, static fs.FS) http.Handler {
 	mux.Handle("GET /api/followed", listFollowed(st))
 	mux.Handle("PUT /api/followed/{id}", followArtist(st))
 	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(st))
-	mux.Handle("GET /", http.FileServerFS(static))
+	mux.Handle("GET /", staticSite(static))
 
 	return mux
+}
+
+// staticSite serves the frontend with cache headers suited to a Vite build.
+// Files under /assets/ carry a content hash in their name, so they never
+// change and may be cached forever. Everything else — index.html, the
+// favicon — says no-cache: embedded files have a zero modification time,
+// leaving the browser no validator to revalidate with, and a stale
+// index.html would point at asset hashes that no longer exist.
+func staticSite(static fs.FS) http.Handler {
+	files := http.FileServerFS(static)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+
+		files.ServeHTTP(w, r)
+	})
 }
 
 func searchArtists(mb *musicbrainz.Client) http.HandlerFunc {
