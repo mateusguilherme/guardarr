@@ -38,6 +38,9 @@
 
   const followed = new SvelteMap<string, Artist>();
   const pending = new SvelteSet<string>();
+  // Settles, loaded or failed, once; until then the artist page cannot
+  // tell a followed artist from one it has to look up.
+  let followedLoaded = $state(false);
 
   // The artist page usually gets its name from state the home already
   // holds — the followed map or the latest search results — so opening it
@@ -59,10 +62,12 @@
 
   // Failing to load the list only means an empty home and every button
   // starting as "Follow".
-  followedArtists().then(
-    (artists) => artists.forEach((artist) => followed.set(artist.id, artist)),
-    () => {},
-  );
+  followedArtists()
+    .then(
+      (artists) => artists.forEach((artist) => followed.set(artist.id, artist)),
+      () => {},
+    )
+    .finally(() => (followedLoaded = true));
 
   async function follow(artist: Artist) {
     if (followed.has(artist.id) || pending.has(artist.id)) {
@@ -230,7 +235,7 @@
 
 <main>
   {#if route.page === "artist"}
-    <ArtistPage id={route.id} name={routeArtist?.name} />
+    <ArtistPage id={route.id} name={routeArtist?.name} {followedLoaded} />
   {:else}
     <header class="hero">
       <h1>

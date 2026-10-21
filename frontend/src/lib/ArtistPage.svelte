@@ -1,34 +1,20 @@
 <script lang="ts">
-  import {
-    artistReleases,
-    followedArtists,
-    lookupArtist,
-    type Release,
-  } from "./api";
+  import { artistReleases, lookupArtist, type Release } from "./api";
 
-  let { id, name }: { id: string; name?: string } = $props();
+  let {
+    id,
+    name,
+    followedLoaded,
+  }: { id: string; name?: string; followedLoaded: boolean } = $props();
 
   let fetchedName = $state<string>();
   let displayName = $derived(name ?? fetchedName);
 
-  // A deep link carries only the id. The name is then recovered from the
-  // followed artists saved locally, or failing that from MusicBrainz.
-  async function resolveName(id: string): Promise<string> {
-    try {
-      const saved = (await followedArtists()).find((artist) => artist.id === id);
-
-      if (saved) {
-        return saved.name;
-      }
-    } catch {
-      // not fatal; MusicBrainz can still answer
-    }
-
-    return (await lookupArtist(id)).name;
-  }
-
+  // A deep link carries only the id. Once the followed artists load, the
+  // parent passes the name of a followed one; only an artist missing from
+  // that list is looked up on MusicBrainz.
   $effect(() => {
-    if (name !== undefined) {
+    if (name !== undefined || !followedLoaded) {
       return;
     }
 
@@ -36,10 +22,10 @@
 
     fetchedName = undefined;
 
-    resolveName(id).then(
-      (resolved) => {
+    lookupArtist(id).then(
+      (artist) => {
         if (!stale) {
-          fetchedName = resolved;
+          fetchedName = artist.name;
         }
       },
       () => {

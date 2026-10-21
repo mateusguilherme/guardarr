@@ -348,6 +348,39 @@ it("a deep link to a followed artist uses the saved name", async () => {
   expect(urls.filter((url) => url === "/api/artists/abc")).toEqual([]);
 });
 
+it("a deep link loads the followed artists only once", async () => {
+  const fetchMock = stubFetch({
+    artist: { id: "abc", name: "Caetano Veloso" },
+  });
+  location.hash = "#/artist/abc";
+  render(App);
+
+  await screen.findByRole("heading", { name: "Caetano Veloso" });
+
+  const urls = fetchMock.mock.calls.map(([url]) => url);
+
+  expect(urls.filter((url) => url === "/api/followed")).toEqual(["/api/followed"]);
+});
+
+it("a deep link still finds the name when the followed list fails", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      if (url === "/api/followed") {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
+      }
+
+      const body = url.endsWith("/releases") ? [] : { id: "abc", name: "Caetano Veloso" };
+
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    }),
+  );
+  location.hash = "#/artist/abc";
+  render(App);
+
+  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
+});
+
 it("shows the error when loading releases fails", async () => {
   stubFetch({ ok: false, status: 503 });
   location.hash = "#/artist/abc";
