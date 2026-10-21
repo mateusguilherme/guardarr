@@ -9,15 +9,29 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
 
-const schema = `CREATE TABLE IF NOT EXISTS artists (id TEXT PRIMARY KEY) STRICT`
+// migrations run in order on Open; the database's user_version pragma
+// records how many have been applied, so each one runs exactly once.
+var migrations = []string{
+	`CREATE TABLE IF NOT EXISTS artists (id TEXT PRIMARY KEY) STRICT`,
+	`ALTER TABLE artists ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE artists ADD COLUMN disambiguation TEXT NOT NULL DEFAULT ''`,
+}
+
+// Artist is a followed artist as stored locally. It mirrors the fields
+// guardarr keeps from MusicBrainz.
+type Artist struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Disambiguation string `json:"disambiguation,omitempty"`
+}
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
 	db *sql.DB
 }
 
-// Open opens the database at path, creating the file and the schema as
-// needed. The caller owns the returned Store and must Close it.
+// Open opens the database at path, creating the file and migrating the
+// schema as needed. The caller owns the returned Store and must Close it.
 func Open(path string) (*Store, error) {
 	// busy_timeout makes concurrent writers wait instead of failing
 	// immediately with SQLITE_BUSY.
@@ -27,12 +41,36 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-	if _, err := db.Exec(schema); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("create schema: %w", err)
+		return nil, err
 	}
 
 	return &Store{db: db}, nil
+}
+
+func migrate(db *sql.DB) error {
+	var version int
+
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	if version > len(migrations) {
+		return fmt.Errorf("database schema version %d is newer than this build supports", version)
+	}
+
+	for i, m := range migrations[version:] {
+		if _, err := db.Exec(m); err != nil {
+			return fmt.Errorf("migration %d: %w", version+i+1, err)
+		}
+
+		if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, version+i+1)); err != nil {
+			return fmt.Errorf("record schema version %d: %w", version+i+1, err)
+		}
+	}
+
+	return nil
 }
 
 // Close releases the database.
@@ -40,20 +78,27 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// SaveArtist records an artist id. Saving an id twice is a no-op.
-func (s *Store) SaveArtist(ctx context.Context, id string) error {
+// SaveArtist records an artist. Saving an id again overwrites its data,
+// so a follow always stores the freshest name and disambiguation.
+func (s *Store) SaveArtist(ctx context.Context, a Artist) error {
 	_, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO artists (id) VALUES (?) ON CONFLICT DO NOTHING`,
-		id,
+		`INSERT INTO artists (id, name, disambiguation) VALUES (?, ?, ?)
+		 ON CONFLICT (id) DO UPDATE SET
+		   name = excluded.name,
+		   disambiguation = excluded.disambiguation`,
+		a.ID, a.Name, a.Disambiguation,
 	)
 
 	return err
 }
 
-// ArtistIDs returns every saved artist id.
-func (s *Store) ArtistIDs(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM artists ORDER BY id`)
+// Artists returns every saved artist, ordered by name.
+func (s *Store) Artists(ctx context.Context) ([]Artist, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, name, disambiguation FROM artists ORDER BY name, id`,
+	)
 
 	if err != nil {
 		return nil, err
@@ -61,17 +106,17 @@ func (s *Store) ArtistIDs(ctx context.Context) ([]string, error) {
 
 	defer rows.Close()
 
-	ids := []string{}
+	artists := []Artist{}
 
 	for rows.Next() {
-		var id string
+		var a Artist
 
-		if err := rows.Scan(&id); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Disambiguation); err != nil {
 			return nil, err
 		}
 
-		ids = append(ids, id)
+		artists = append(artists, a)
 	}
 
-	return ids, rows.Err()
+	return artists, rows.Err()
 }

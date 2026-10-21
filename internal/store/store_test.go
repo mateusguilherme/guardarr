@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"slices"
 	"testing"
 )
+
+var caetano = Artist{ID: "abc", Name: "Caetano Veloso"}
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
@@ -21,55 +24,59 @@ func testStore(t *testing.T) *Store {
 	return s
 }
 
-func TestArtistIDsStartsEmpty(t *testing.T) {
-	ids, err := testStore(t).ArtistIDs(context.Background())
+func TestArtistsStartsEmpty(t *testing.T) {
+	artists, err := testStore(t).Artists(context.Background())
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(ids) != 0 {
-		t.Errorf("want no ids, got %v", ids)
+	if len(artists) != 0 {
+		t.Errorf("want no artists, got %v", artists)
 	}
 }
 
-func TestSaveArtistPersistsIDs(t *testing.T) {
+func TestSaveArtistPersistsEveryField(t *testing.T) {
 	s := testStore(t)
+	trio := Artist{ID: "def", Name: "Caetaneando", Disambiguation: "tribute trio"}
 
-	for _, id := range []string{"abc", "def"} {
-		if err := s.SaveArtist(context.Background(), id); err != nil {
+	for _, a := range []Artist{trio, caetano} {
+		if err := s.SaveArtist(context.Background(), a); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	ids, err := s.ArtistIDs(context.Background())
+	artists, err := s.Artists(context.Background())
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if want := []string{"abc", "def"}; !slices.Equal(ids, want) {
-		t.Errorf("ids = %v, want %v", ids, want)
+	// Artists lists by name: "Caetaneando" sorts before "Caetano Veloso".
+	if want := []Artist{trio, caetano}; !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
 	}
 }
 
-func TestSaveArtistIgnoresDuplicates(t *testing.T) {
+func TestSaveArtistOverwritesDuplicates(t *testing.T) {
 	s := testStore(t)
 
-	for range 2 {
-		if err := s.SaveArtist(context.Background(), "abc"); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.SaveArtist(context.Background(), Artist{ID: "abc", Name: "old name"}); err != nil {
+		t.Fatal(err)
 	}
 
-	ids, err := s.ArtistIDs(context.Background())
+	if err := s.SaveArtist(context.Background(), caetano); err != nil {
+		t.Fatal(err)
+	}
+
+	artists, err := s.Artists(context.Background())
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if want := []string{"abc"}; !slices.Equal(ids, want) {
-		t.Errorf("ids = %v, want %v", ids, want)
+	if want := []Artist{caetano}; !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
 	}
 }
 
@@ -81,7 +88,7 @@ func TestOpenReusesAnExistingDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := first.SaveArtist(context.Background(), "abc"); err != nil {
+	if err := first.SaveArtist(context.Background(), caetano); err != nil {
 		t.Fatal(err)
 	}
 
@@ -97,13 +104,76 @@ func TestOpenReusesAnExistingDatabase(t *testing.T) {
 
 	defer second.Close()
 
-	ids, err := second.ArtistIDs(context.Background())
+	artists, err := second.Artists(context.Background())
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if want := []string{"abc"}; !slices.Equal(ids, want) {
-		t.Errorf("ids = %v, want %v", ids, want)
+	if want := []Artist{caetano}; !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
+	}
+}
+
+func TestOpenMigratesTheFirstSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+
+	// Write a database the way the id-only schema did, before name and
+	// disambiguation existed.
+	db, err := sql.Open("sqlite", "file:"+path)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`CREATE TABLE artists (id TEXT PRIMARY KEY) STRICT`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO artists (id) VALUES ('abc')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(path)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer s.Close()
+
+	artists, err := s.Artists(context.Background())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := []Artist{{ID: "abc"}}; !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
+	}
+}
+
+func TestOpenRefusesANewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`PRAGMA user_version = 99`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path); err == nil {
+		t.Fatal("want an error opening a database from a newer build, got nil")
 	}
 }

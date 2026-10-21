@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteSet } from "svelte/reactivity";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import {
     followArtist,
     followedArtists,
@@ -17,29 +17,30 @@
   let search = $state<Search>({ status: "idle" });
   let searching = $derived(search.status === "searching");
 
-  const followed = new SvelteSet<string>();
+  const followed = new SvelteMap<string, Artist>();
   const pending = new SvelteSet<string>();
 
-  // Failing to load the list only means every button starts as "Follow".
+  // Failing to load the list only means an empty home and every button
+  // starting as "Follow".
   followedArtists().then(
-    (ids) => ids.forEach((id) => followed.add(id)),
+    (artists) => artists.forEach((artist) => followed.set(artist.id, artist)),
     () => {},
   );
 
-  async function follow(id: string) {
-    if (followed.has(id) || pending.has(id)) {
+  async function follow(artist: Artist) {
+    if (followed.has(artist.id) || pending.has(artist.id)) {
       return;
     }
 
-    pending.add(id);
+    pending.add(artist.id);
 
     try {
-      await followArtist(id);
-      followed.add(id);
+      await followArtist(artist);
+      followed.set(artist.id, artist);
     } catch {
       // keep the button enabled so the user can retry
     } finally {
-      pending.delete(id);
+      pending.delete(artist.id);
     }
   }
 
@@ -64,6 +65,41 @@
     }
   }
 </script>
+
+{#snippet artistCard(artist: Artist, i: number)}
+  <li style="--i: {i}">
+    <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
+    <div class="who">
+      <span class="name">{artist.name}</span>
+      {#if artist.disambiguation}
+        <span class="disambiguation">{artist.disambiguation}</span>
+      {/if}
+    </div>
+    {#if followed.has(artist.id)}
+      <span class="following">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M5 12.5 10 17.5 19 7"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        Following
+      </span>
+    {:else}
+      <button
+        class="follow"
+        onclick={() => follow(artist)}
+        disabled={pending.has(artist.id)}
+      >
+        Follow
+      </button>
+    {/if}
+  </li>
+{/snippet}
 
 <main>
   <header class="hero">
@@ -120,38 +156,7 @@
       </p>
       <ul>
         {#each search.artists as artist, i (artist.id)}
-          <li style="--i: {i}">
-            <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
-            <div class="who">
-              <span class="name">{artist.name}</span>
-              {#if artist.disambiguation}
-                <span class="disambiguation">{artist.disambiguation}</span>
-              {/if}
-            </div>
-            {#if followed.has(artist.id)}
-              <span class="following">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M5 12.5 10 17.5 19 7"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                Following
-              </span>
-            {:else}
-              <button
-                class="follow"
-                onclick={() => follow(artist.id)}
-                disabled={pending.has(artist.id)}
-              >
-                Follow
-              </button>
-            {/if}
-          </li>
+          {@render artistCard(artist, i)}
         {/each}
       </ul>
     </section>
@@ -165,5 +170,17 @@
       <p class="empty">No artists found.</p>
       <p class="hint">Try a different spelling or another name.</p>
     </div>
+  {:else if search.status === "idle" && followed.size > 0}
+    <section class="results">
+      <p class="count">
+        {followed.size}
+        {followed.size === 1 ? "artist followed" : "artists followed"}
+      </p>
+      <ul>
+        {#each [...followed.values()] as artist, i (artist.id)}
+          {@render artistCard(artist, i)}
+        {/each}
+      </ul>
+    </section>
   {/if}
 </main>

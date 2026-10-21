@@ -50,7 +50,7 @@ func searchArtists(mb *musicbrainz.Client) http.HandlerFunc {
 
 func listFollowed(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ids, err := st.ArtistIDs(r.Context())
+		artists, err := st.Artists(r.Context())
 
 		if err != nil {
 			log.Printf("list followed artists: %v", err)
@@ -60,7 +60,7 @@ func listFollowed(st *store.Store) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 
-		if err := json.NewEncoder(w).Encode(ids); err != nil {
+		if err := json.NewEncoder(w).Encode(artists); err != nil {
 			log.Printf("encode response: %v", err)
 		}
 	}
@@ -68,7 +68,28 @@ func listFollowed(st *store.Store) http.HandlerFunc {
 
 func followArtist(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := st.SaveArtist(r.Context(), r.PathValue("id")); err != nil {
+		var body struct {
+			Name           string `json:"name"`
+			Disambiguation string `json:"disambiguation"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if body.Name == "" {
+			http.Error(w, `missing "name" field`, http.StatusBadRequest)
+			return
+		}
+
+		artist := store.Artist{
+			ID:             r.PathValue("id"),
+			Name:           body.Name,
+			Disambiguation: body.Disambiguation,
+		}
+
+		if err := st.SaveArtist(r.Context(), artist); err != nil {
 			log.Printf("follow artist: %v", err)
 			http.Error(w, "following the artist failed", http.StatusInternalServerError)
 			return

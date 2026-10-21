@@ -56,15 +56,16 @@ func get(t *testing.T, url string) *http.Response {
 	return resp
 }
 
-func put(t *testing.T, url string) *http.Response {
+func put(t *testing.T, url, body string) *http.Response {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPut, url, nil)
+	req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 
 	if err != nil {
@@ -76,7 +77,7 @@ func put(t *testing.T, url string) *http.Response {
 	return resp
 }
 
-func followedIDs(t *testing.T, app *httptest.Server) []string {
+func followed(t *testing.T, app *httptest.Server) []store.Artist {
 	t.Helper()
 
 	resp := get(t, app.URL+"/api/followed")
@@ -85,13 +86,13 @@ func followedIDs(t *testing.T, app *httptest.Server) []string {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var ids []string
+	var artists []store.Artist
 
-	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&artists); err != nil {
 		t.Fatal(err)
 	}
 
-	return ids
+	return artists
 }
 
 func TestSearchArtistsReturnsResults(t *testing.T) {
@@ -154,42 +155,61 @@ func noMusicBrainz(t *testing.T) http.HandlerFunc {
 func TestFollowedStartsEmpty(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
-	ids := followedIDs(t, app)
+	artists := followed(t, app)
 
-	if ids == nil {
+	if artists == nil {
 		t.Fatal("want an empty JSON array, got null")
 	}
 
-	if len(ids) != 0 {
-		t.Errorf("want no ids, got %v", ids)
+	if len(artists) != 0 {
+		t.Errorf("want no artists, got %v", artists)
 	}
 }
 
-func TestFollowArtistPersists(t *testing.T) {
+func TestFollowArtistPersistsEveryField(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
-	resp := put(t, app.URL+"/api/followed/abc")
+	resp := put(t, app.URL+"/api/followed/abc",
+		`{"name": "Caetano Veloso", "disambiguation": "Brazilian singer"}`)
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNoContent)
 	}
 
-	if ids := followedIDs(t, app); !slices.Equal(ids, []string{"abc"}) {
-		t.Errorf("ids = %v, want %v", ids, []string{"abc"})
+	want := []store.Artist{{ID: "abc", Name: "Caetano Veloso", Disambiguation: "Brazilian singer"}}
+
+	if artists := followed(t, app); !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
 	}
 }
 
-func TestFollowArtistTwiceKeepsOneID(t *testing.T) {
+func TestFollowArtistTwiceKeepsOneEntry(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
-	for range 2 {
-		if resp := put(t, app.URL+"/api/followed/abc"); resp.StatusCode != http.StatusNoContent {
+	for _, body := range []string{`{"name": "old name"}`, `{"name": "Caetano Veloso"}`} {
+		if resp := put(t, app.URL+"/api/followed/abc", body); resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNoContent)
 		}
 	}
 
-	if ids := followedIDs(t, app); !slices.Equal(ids, []string{"abc"}) {
-		t.Errorf("ids = %v, want %v", ids, []string{"abc"})
+	want := []store.Artist{{ID: "abc", Name: "Caetano Veloso"}}
+
+	if artists := followed(t, app); !slices.Equal(artists, want) {
+		t.Errorf("artists = %v, want %v", artists, want)
+	}
+}
+
+func TestFollowArtistRequiresAName(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	for _, body := range []string{`{}`, `not json`} {
+		if resp := put(t, app.URL+"/api/followed/abc", body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("status for %q = %d, want %d", body, resp.StatusCode, http.StatusBadRequest)
+		}
+	}
+
+	if artists := followed(t, app); len(artists) != 0 {
+		t.Errorf("want nothing saved, got %v", artists)
 	}
 }
 

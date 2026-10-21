@@ -32,13 +32,13 @@ it("throws on a non-ok response", async () => {
   await expect(searchArtists("x")).rejects.toThrow("search failed (502)");
 });
 
-it("fetches the followed artist ids", async () => {
-  const fetchMock = stubFetch(["abc", "def"]);
+it("fetches the followed artists", async () => {
+  const fetchMock = stubFetch([caetano]);
 
-  const ids = await followedArtists();
+  const artists = await followedArtists();
 
   expect(fetchMock).toHaveBeenCalledWith("/api/followed");
-  expect(ids).toEqual(["abc", "def"]);
+  expect(artists).toEqual([caetano]);
 });
 
 it("throws when loading followed artists fails", async () => {
@@ -52,15 +52,17 @@ it("throws when loading followed artists fails", async () => {
 it("follows an artist with a put request", async () => {
   const fetchMock = stubFetch(null);
 
-  await followArtist("abc");
+  await followArtist({ ...caetano, disambiguation: "Brazilian singer" });
 
   expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: '{"name":"Caetano Veloso","disambiguation":"Brazilian singer"}',
   });
 });
 
 it("throws when following fails", async () => {
   stubFetch(null, false, 500);
 
-  await expect(followArtist("abc")).rejects.toThrow("follow failed (500)");
+  await expect(followArtist(caetano)).rejects.toThrow("follow failed (500)");
 });

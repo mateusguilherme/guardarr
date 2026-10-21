@@ -97,12 +97,12 @@ it("marks artists that are already followed", async () => {
       { id: "abc", name: "Caetano Veloso" },
       { id: "def", name: "Djavan" },
     ],
-    followed: ["abc"],
+    followed: [{ id: "abc", name: "Caetano Veloso" }],
   });
   render(App);
 
   await searchFor("caetano");
-  await screen.findByText("Caetano Veloso");
+  await screen.findByText("Djavan");
 
   expect(screen.getByText("Following")).toBeDefined();
   expect(screen.getByRole("button", { name: "Follow" })).toBeDefined();
@@ -118,6 +118,35 @@ it("follows an artist from the results", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Follow" }));
 
   expect(await screen.findByText("Following")).toBeDefined();
-  expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", { method: "PUT" });
+  expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: '{"name":"Caetano Veloso"}',
+  });
   expect(screen.queryByRole("button", { name: "Follow" })).toBeNull();
+});
+
+it("lists the followed artists on the home", async () => {
+  stubFetch({
+    followed: [
+      { id: "abc", name: "Caetano Veloso" },
+      { id: "def", name: "Caetaneando", disambiguation: "tribute trio" },
+    ],
+  });
+  render(App);
+
+  expect(await screen.findByText("Caetano Veloso")).toBeDefined();
+  expect(screen.getByText("tribute trio")).toBeDefined();
+  expect(screen.getByText("2 artists followed")).toBeDefined();
+});
+
+it("hides the followed list once a search runs", async () => {
+  stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
+  render(App);
+
+  await screen.findByText("Caetano Veloso");
+  await searchFor("zzzz");
+
+  expect(await screen.findByText("No artists found.")).toBeDefined();
+  expect(screen.queryByText("Caetano Veloso")).toBeNull();
 });
