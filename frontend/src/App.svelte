@@ -199,6 +199,10 @@
       </svg>
       <span>guard<span class="arr">arr</span></span>
     </h1>
+    <p class="tagline">
+      <i>guardar</i> <span class="ipa">/ɡwaʁˈdaʁ/</span> — Portuguese for “to
+      keep, to watch over”
+    </p>
   </header>
 
   <form class="search" onsubmit={submit}>

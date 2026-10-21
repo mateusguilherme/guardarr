@@ -61,6 +61,17 @@ h1 {
   color: var(--accent);
 }
 
+.tagline {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+
+.ipa {
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
 /* search */
 
 .search {
