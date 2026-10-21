@@ -370,6 +370,35 @@ func TestThrottleSpacesConcurrentRequests(t *testing.T) {
 	}
 }
 
+func TestThrottleFreesTheSlotOfACancelledWait(t *testing.T) {
+	c := testClient("http://unused")
+	c.interval = 200 * time.Millisecond
+	start := time.Now()
+
+	// The first call takes the slot; the next one opens an interval later.
+	if err := c.throttle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second caller queues for that slot, then gives up.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+
+	defer cancel()
+
+	if err := c.throttle(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	// A third caller gets the slot the second abandoned, not the one after.
+	if err := c.throttle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if elapsed := time.Since(start); elapsed >= 2*c.interval {
+		t.Errorf("third call returned after %v, want under %v", elapsed, 2*c.interval)
+	}
+}
+
 func TestThrottleHonorsCancellation(t *testing.T) {
 	c := testClient("http://unused")
 	c.interval = time.Hour

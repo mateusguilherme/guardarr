@@ -48,17 +48,17 @@ type Client struct {
 	apiURL   string
 	interval time.Duration // minimum spacing between requests
 	http     *http.Client
-	mu       sync.Mutex
-	next     time.Time // earliest moment the next request may leave
+	slot     chan struct{} // the one token a request takes to leave
 
 	artists  *ttlCache[Artist]
 	releases *ttlCache[[]Release]
 }
 
 func NewClient() *Client {
-	return &Client{
+	c := &Client{
 		apiURL:   apiURL,
 		interval: minInterval,
+		slot:     make(chan struct{}, 1),
 		artists:  newTTLCache[Artist](cacheTTL),
 		releases: newTTLCache[[]Release](cacheTTL),
 		http: &http.Client{
@@ -72,6 +72,10 @@ func NewClient() *Client {
 			},
 		},
 	}
+
+	c.slot <- struct{}{}
+
+	return c
 }
 
 // NewClientWithURL is a client against another base URL, for tests.
@@ -82,29 +86,28 @@ func NewClientWithURL(apiURL string) *Client {
 	return c
 }
 
-// throttle reserves the next request slot and sleeps until it opens,
-// honoring ctx cancellation while waiting.
+// throttle waits for the request slot, honoring ctx cancellation while
+// waiting, and hands the slot back one interval later. The Go runtime
+// queues blocked receivers in arrival order, so waiters are served first
+// come, first served; one that gives up just leaves the queue, holding no
+// slot that would delay those behind it.
 func (c *Client) throttle(ctx context.Context) error {
-	c.mu.Lock()
-
-	wait := max(time.Until(c.next), 0)
-	c.next = time.Now().Add(wait + c.interval)
-
-	c.mu.Unlock()
-
-	if wait == 0 {
-		return nil
-	}
-
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-timer.C:
-		return nil
+	case <-c.slot:
 	}
+
+	// select picks at random when the slot and the cancellation arrive
+	// together; a request that will not leave must not spend the slot.
+	if err := ctx.Err(); err != nil {
+		c.slot <- struct{}{}
+		return err
+	}
+
+	time.AfterFunc(c.interval, func() { c.slot <- struct{}{} })
+
+	return nil
 }
 
 // getJSON performs one throttled request against path and decodes the JSON
