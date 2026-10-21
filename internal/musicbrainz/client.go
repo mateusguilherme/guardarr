@@ -28,15 +28,17 @@ type Artist struct {
 }
 
 type Client struct {
-	apiURL string
-	http   *http.Client
-	mu     sync.Mutex
-	next   time.Time // earliest moment the next request may leave
+	apiURL   string
+	interval time.Duration // minimum spacing between requests
+	http     *http.Client
+	mu       sync.Mutex
+	next     time.Time // earliest moment the next request may leave
 }
 
 func NewClient() *Client {
 	return &Client{
-		apiURL: apiURL,
+		apiURL:   apiURL,
+		interval: minInterval,
 		http: &http.Client{
 			Timeout: 15 * time.Second,
 			// Keeping the TLS connection alive between requests saves a full
@@ -50,13 +52,21 @@ func NewClient() *Client {
 	}
 }
 
+// NewClientWithURL is a client against another base URL, for tests.
+func NewClientWithURL(apiURL string) *Client {
+	c := NewClient()
+	c.apiURL = apiURL
+
+	return c
+}
+
 // throttle reserves the next request slot and sleeps until it opens,
 // honoring ctx cancellation while waiting.
 func (c *Client) throttle(ctx context.Context) error {
 	c.mu.Lock()
 
 	wait := max(time.Until(c.next), 0)
-	c.next = time.Now().Add(wait + minInterval)
+	c.next = time.Now().Add(wait + c.interval)
 
 	c.mu.Unlock()
 
