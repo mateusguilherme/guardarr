@@ -316,8 +316,10 @@ it("returns home from the artist page", async () => {
   await screen.findByText("No official releases.");
   await userEvent.click(screen.getByRole("link", { name: "Back to your artists" }));
 
-  expect(await screen.findByText("Caetano Veloso")).toBeDefined();
-  expect(screen.getByText("1 artist followed")).toBeDefined();
+  // The artist page's own heading also reads "Caetano Veloso", so wait on
+  // something only the home shows before looking for the card.
+  expect(await screen.findByText("1 artist followed")).toBeDefined();
+  expect(screen.getByRole("link", { name: "Caetano Veloso" })).toBeDefined();
 });
 
 it("a deep link looks the artist's name up", async () => {
