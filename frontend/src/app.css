@@ -302,6 +302,13 @@ li:hover {
   animation: shimmer 1.4s linear infinite;
 }
 
+.no-match {
+  margin: 1.5rem 0 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
 /* notices */
 
 .notice {

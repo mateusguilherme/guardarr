@@ -44,6 +44,10 @@
     }
   }
 
+  // Bumped on reset so the result of an in-flight search is discarded
+  // instead of reappearing over the home.
+  let searchSeq = 0;
+
   async function submit(event: SubmitEvent) {
     event.preventDefault();
 
@@ -53,16 +57,73 @@
       return;
     }
 
+    const seq = ++searchSeq;
+
     search = { status: "searching" };
 
     try {
-      search = { status: "done", artists: await searchArtists(q) };
+      const artists = await searchArtists(q);
+
+      if (seq === searchSeq) {
+        search = { status: "done", artists };
+      }
     } catch (err) {
-      search = {
-        status: "error",
-        message: err instanceof Error ? err.message : String(err),
-      };
+      if (seq === searchSeq) {
+        search = {
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
     }
+  }
+
+  // fold lowercases and strips accents, so "jose" matches "José".
+  function fold(s: string) {
+    return s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+  }
+
+  // The home list narrows to the typed term as the user types, before
+  // any search is submitted.
+  let filteredFollowed = $derived.by(() => {
+    const q = fold(term.trim());
+    const all = [...followed.values()];
+
+    if (!q) {
+      return all;
+    }
+
+    return all.filter(
+      (artist) =>
+        fold(artist.name).includes(q) ||
+        fold(artist.disambiguation ?? "").includes(q),
+    );
+  });
+
+  // Emptying the field by any means (escape, backspace, delete…) returns
+  // to the followed artists, discarding any search still in flight.
+  $effect(() => {
+    if (term.trim() === "" && search.status !== "idle") {
+      searchSeq++;
+      search = { status: "idle" };
+    }
+  });
+
+  function keydown(event: KeyboardEvent) {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    // First escape clears the text (the effect above restores the home);
+    // with nothing left to clear, a second one leaves the field.
+    if (term === "") {
+      (event.currentTarget as HTMLInputElement).blur();
+      return;
+    }
+
+    term = "";
   }
 </script>
 
@@ -119,7 +180,7 @@
       <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
       <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
     </svg>
-    <input bind:value={term} placeholder="Search an artist…" />
+    <input bind:value={term} placeholder="Search an artist…" onkeydown={keydown} />
     <button disabled={searching}>
       {#if searching}<span class="spinner" aria-hidden="true"></span>{/if}
       {searching ? "Searching…" : "Search"}
@@ -173,14 +234,24 @@
   {:else if search.status === "idle" && followed.size > 0}
     <section class="results">
       <p class="count">
-        {followed.size}
-        {followed.size === 1 ? "artist followed" : "artists followed"}
+        {#if term.trim()}
+          {filteredFollowed.length} of {followed.size} followed
+        {:else}
+          {followed.size}
+          {followed.size === 1 ? "artist followed" : "artists followed"}
+        {/if}
       </p>
-      <ul>
-        {#each [...followed.values()] as artist, i (artist.id)}
-          {@render artistCard(artist, i)}
-        {/each}
-      </ul>
+      {#if filteredFollowed.length > 0}
+        <ul>
+          {#each filteredFollowed as artist, i (artist.id)}
+            {@render artistCard(artist, i)}
+          {/each}
+        </ul>
+      {:else}
+        <p class="no-match">
+          No followed artists match — press Enter to search MusicBrainz.
+        </p>
+      {/if}
     </section>
   {/if}
 </main>

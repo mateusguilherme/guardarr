@@ -140,6 +140,100 @@ it("lists the followed artists on the home", async () => {
   expect(screen.getByText("2 artists followed")).toBeDefined();
 });
 
+it("escape clears the search and shows the followed artists again", async () => {
+  stubFetch({
+    artists: [{ id: "abc", name: "Caetano Veloso" }],
+    followed: [{ id: "def", name: "Djavan" }],
+  });
+  render(App);
+
+  await screen.findByText("Djavan");
+  await searchFor("caetano");
+  await screen.findByText("Caetano Veloso");
+
+  const input = screen.getByPlaceholderText<HTMLInputElement>("Search an artist…");
+
+  await userEvent.type(input, "{Escape}");
+
+  expect(input.value).toBe("");
+  expect(screen.queryByText("Caetano Veloso")).toBeNull();
+  expect(await screen.findByText("Djavan")).toBeDefined();
+});
+
+it("returns to the followed artists when the text is erased", async () => {
+  stubFetch({
+    artists: [{ id: "abc", name: "Caetano Veloso" }],
+    followed: [{ id: "def", name: "Djavan" }],
+  });
+  render(App);
+
+  await screen.findByText("Djavan");
+  await searchFor("caetano");
+  await screen.findByText("Caetano Veloso");
+
+  await userEvent.clear(screen.getByPlaceholderText("Search an artist…"));
+
+  expect(await screen.findByText("Djavan")).toBeDefined();
+  expect(screen.queryByText("Caetano Veloso")).toBeNull();
+});
+
+it("a second escape leaves the search field", async () => {
+  stubFetch();
+  render(App);
+
+  const input = screen.getByPlaceholderText<HTMLInputElement>("Search an artist…");
+
+  await userEvent.type(input, "caetano");
+  await userEvent.keyboard("{Escape}");
+
+  expect(input.value).toBe("");
+  expect(document.activeElement).toBe(input);
+
+  await userEvent.keyboard("{Escape}");
+
+  expect(document.activeElement).not.toBe(input);
+});
+
+it("filters the followed artists while typing, ignoring accents", async () => {
+  const fetchMock = stubFetch({
+    followed: [
+      { id: "abc", name: "José Veloso" },
+      { id: "def", name: "Djavan" },
+    ],
+  });
+  render(App);
+
+  await screen.findByText("Djavan");
+  await userEvent.type(
+    screen.getByPlaceholderText("Search an artist…"),
+    "jose",
+  );
+
+  expect(screen.getByText("José Veloso")).toBeDefined();
+  expect(screen.queryByText("Djavan")).toBeNull();
+  expect(screen.getByText("1 of 2 followed")).toBeDefined();
+
+  const urls = fetchMock.mock.calls.map(([url]) => url);
+
+  expect(urls.filter((url) => url.startsWith("/api/artists"))).toEqual([]);
+});
+
+it("offers the full search when no followed artist matches", async () => {
+  stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
+  render(App);
+
+  await screen.findByText("Caetano Veloso");
+  await userEvent.type(
+    screen.getByPlaceholderText("Search an artist…"),
+    "zzzz",
+  );
+
+  expect(screen.queryByText("Caetano Veloso")).toBeNull();
+  expect(
+    screen.getByText("No followed artists match — press Enter to search MusicBrainz."),
+  ).toBeDefined();
+});
+
 it("hides the followed list once a search runs", async () => {
   stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
   render(App);
