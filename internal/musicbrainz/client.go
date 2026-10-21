@@ -21,6 +21,10 @@ const (
 	// MusicBrainz limits clients to ~1 request per second per IP and replies
 	// 503 above that, so requests are spaced out instead of failed and retried.
 	minInterval = 1100 * time.Millisecond
+	// An artist's data and discography change rarely, while every page view
+	// asks for them again; repeats served from memory skip the throttle wait
+	// entirely. One hour bounds how long a brand-new release can stay hidden.
+	cacheTTL = time.Hour
 )
 
 type Artist struct {
@@ -46,12 +50,17 @@ type Client struct {
 	http     *http.Client
 	mu       sync.Mutex
 	next     time.Time // earliest moment the next request may leave
+
+	artists  *ttlCache[Artist]
+	releases *ttlCache[[]Release]
 }
 
 func NewClient() *Client {
 	return &Client{
 		apiURL:   apiURL,
 		interval: minInterval,
+		artists:  newTTLCache[Artist](cacheTTL),
+		releases: newTTLCache[[]Release](cacheTTL),
 		http: &http.Client{
 			Timeout: 15 * time.Second,
 			// Keeping the TLS connection alive between requests saves a full
@@ -88,7 +97,6 @@ func (c *Client) throttle(ctx context.Context) error {
 	}
 
 	timer := time.NewTimer(wait)
-
 	defer timer.Stop()
 
 	select {
@@ -133,13 +141,19 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 	return nil
 }
 
-// Artist looks up one artist by its MBID.
+// Artist looks up one artist by its MBID, served from cache when fresh.
 func (c *Client) Artist(ctx context.Context, id string) (Artist, error) {
+	if artist, ok := c.artists.get(id); ok {
+		return artist, nil
+	}
+
 	var artist Artist
 
 	if err := c.getJSON(ctx, "/artist/"+url.PathEscape(id), url.Values{}, &artist); err != nil {
 		return Artist{}, err
 	}
+
+	c.artists.put(id, artist)
 
 	return artist, nil
 }
@@ -165,11 +179,16 @@ func (c *Client) SearchArtists(ctx context.Context, term string) ([]Artist, erro
 // searchLimit is the most results MusicBrainz returns per search request.
 const searchLimit = 100
 
-// ArtistReleases returns every release of an artist, newest first.
+// ArtistReleases returns every release of an artist, newest first, served
+// from cache when fresh; the slice is shared, so callers must not mutate it.
 // It searches release groups instead of browsing them: "official" is a
 // status on individual releases, which a browse cannot filter by, so
 // bootleg-only groups — garage demos, say — would slip in.
 func (c *Client) ArtistReleases(ctx context.Context, artistID string) ([]Release, error) {
+	if releases, ok := c.releases.get(artistID); ok {
+		return releases, nil
+	}
+
 	releases := []Release{}
 
 	// The search pages through the matches; the reported total says when
@@ -232,5 +251,56 @@ func (c *Client) ArtistReleases(ctx context.Context, artistID string) ([]Release
 		return strings.Compare(b.FirstReleaseDate, a.FirstReleaseDate)
 	})
 
+	c.releases.put(artistID, releases)
+
 	return releases, nil
+}
+
+// ttlCache is a mutex-guarded map whose entries expire after a fixed
+// duration. Errors are never stored, so a failed lookup retries right away.
+type ttlCache[V any] struct {
+	mu      sync.Mutex
+	ttl     time.Duration
+	entries map[string]ttlEntry[V]
+}
+
+type ttlEntry[V any] struct {
+	value   V
+	expires time.Time
+}
+
+func newTTLCache[V any](ttl time.Duration) *ttlCache[V] {
+	return &ttlCache[V]{ttl: ttl, entries: map[string]ttlEntry[V]{}}
+}
+
+func (c *ttlCache[V]) get(key string) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.entries[key]
+
+	if !ok || time.Now().After(entry.expires) {
+		var zero V
+
+		return zero, false
+	}
+
+	return entry.value, true
+}
+
+// put stores value under key and sweeps expired entries out, keeping the
+// cache no larger than the set of keys asked about within one ttl.
+func (c *ttlCache[V]) put(key string, value V) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now()
+
+	for k, entry := range c.entries {
+		if now.After(entry.expires) {
+			delete(c.entries, k)
+		}
+	}
+
+	c.entries[key] = ttlEntry[V]{value: value, expires: now.Add(c.ttl)}
 }

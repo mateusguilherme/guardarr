@@ -244,6 +244,94 @@ func TestArtistReleasesNormalizesNullToEmpty(t *testing.T) {
 	}
 }
 
+func TestArtistServesRepeatsFromCache(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		w.Write([]byte(`{"id": "abc", "name": "Caetano Veloso"}`))
+	}))
+
+	defer fake.Close()
+
+	c := testClient(fake.URL)
+
+	for range 2 {
+		artist, err := c.Artist(context.Background(), "abc")
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if artist.Name != "Caetano Veloso" {
+			t.Errorf("artist = %+v, want name %q", artist, "Caetano Veloso")
+		}
+	}
+
+	if requests != 1 {
+		t.Errorf("server saw %d requests, want 1", requests)
+	}
+}
+
+func TestArtistReleasesServesRepeatsFromCache(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		w.Write([]byte(`{"count": 1, "release-groups": [{"id": "rg1", "title": "Transa", "first-release-date": "1972"}]}`))
+	}))
+
+	defer fake.Close()
+
+	c := testClient(fake.URL)
+	want := []Release{{ID: "rg1", Title: "Transa", FirstReleaseDate: "1972"}}
+
+	for range 2 {
+		releases, err := c.ArtistReleases(context.Background(), "abc")
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(releases, want) {
+			t.Errorf("releases = %+v, want %+v", releases, want)
+		}
+	}
+
+	if requests != 1 {
+		t.Errorf("server saw %d requests, want 1", requests)
+	}
+}
+
+func TestArtistReleasesCacheExpires(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		w.Write([]byte(`{"count": 0, "release-groups": []}`))
+	}))
+
+	defer fake.Close()
+
+	c := testClient(fake.URL)
+	c.releases = newTTLCache[[]Release](10 * time.Millisecond)
+
+	for range 2 {
+		if _, err := c.ArtistReleases(context.Background(), "abc"); err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if requests != 2 {
+		t.Errorf("server saw %d requests, want 2 once the entry expired", requests)
+	}
+}
+
 func TestThrottleSpacesRequests(t *testing.T) {
 	c := testClient("http://unused")
 	start := time.Now()
