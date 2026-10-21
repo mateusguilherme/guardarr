@@ -145,6 +145,90 @@ func TestSearchArtistsReportsUpstreamFailure(t *testing.T) {
 	}
 }
 
+func TestLookupArtistReturnsIt(t *testing.T) {
+	app := newApp(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/artist/abc" {
+			t.Errorf("path = %q, want %q", got, "/artist/abc")
+		}
+
+		w.Write([]byte(`{"id": "abc", "name": "Caetano Veloso", "disambiguation": "Brazilian singer"}`))
+	})
+
+	resp := get(t, app.URL+"/api/artists/abc")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var artist musicbrainz.Artist
+
+	if err := json.NewDecoder(resp.Body).Decode(&artist); err != nil {
+		t.Fatal(err)
+	}
+
+	want := musicbrainz.Artist{ID: "abc", Name: "Caetano Veloso", Disambiguation: "Brazilian singer"}
+
+	if artist != want {
+		t.Errorf("artist = %+v, want %+v", artist, want)
+	}
+}
+
+func TestLookupArtistReportsUpstreamFailure(t *testing.T) {
+	app := newApp(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	resp := get(t, app.URL+"/api/artists/abc")
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+func TestArtistReleasesReturnsResults(t *testing.T) {
+	app := newApp(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("query"); !strings.Contains(got, "arid:abc") {
+			t.Errorf("query = %q, want it to mention arid:abc", got)
+		}
+
+		w.Write([]byte(`{"count": 1, "release-groups": [{"id": "rg1", "title": "Transa", "first-release-date": "1972-01-01"}]}`))
+	})
+
+	resp := get(t, app.URL+"/api/artists/abc/releases")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if got := resp.Header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", got, "application/json")
+	}
+
+	var releases []musicbrainz.Release
+
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []musicbrainz.Release{{ID: "rg1", Title: "Transa", FirstReleaseDate: "1972-01-01"}}
+
+	if !slices.Equal(releases, want) {
+		t.Errorf("releases = %+v, want %+v", releases, want)
+	}
+}
+
+func TestArtistReleasesReportsUpstreamFailure(t *testing.T) {
+	app := newApp(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	resp := get(t, app.URL+"/api/artists/abc/releases")
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
 // noMusicBrainz fails the test if the MusicBrainz API is reached.
 func noMusicBrainz(t *testing.T) http.HandlerFunc {
 	return func(_ http.ResponseWriter, _ *http.Request) {

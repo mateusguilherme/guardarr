@@ -4,11 +4,37 @@ export type Artist = {
   disambiguation?: string;
 };
 
+export async function lookupArtist(id: string): Promise<Artist> {
+  const response = await fetch(`/api/artists/${encodeURIComponent(id)}`);
+
+  if (!response.ok) {
+    throw new Error(`loading the artist failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
 export async function searchArtists(q: string): Promise<Artist[]> {
   const response = await fetch(`/api/artists?q=${encodeURIComponent(q)}`);
 
   if (!response.ok) {
     throw new Error(`search failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export type Release = {
+  id: string;
+  title: string;
+  firstReleaseDate?: string;
+};
+
+export async function artistReleases(id: string): Promise<Release[]> {
+  const response = await fetch(`/api/artists/${encodeURIComponent(id)}/releases`);
+
+  if (!response.ok) {
+    throw new Error(`loading releases failed (${response.status})`);
   }
 
   return response.json();

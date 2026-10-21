@@ -5,19 +5,29 @@ import App from "./App.svelte";
 
 type StubOptions = {
   artists?: unknown;
+  artist?: unknown;
   followed?: unknown;
+  releases?: unknown;
   ok?: boolean;
   status?: number;
 };
 
 function stubFetch({
   artists = [],
+  artist = {},
   followed = [],
+  releases = [],
   ok = true,
   status = 200,
 }: StubOptions = {}) {
   const fetchMock = vi.fn((url: string) => {
-    const body = url.startsWith("/api/followed") ? followed : artists;
+    const body = url.endsWith("/releases")
+      ? releases
+      : url.startsWith("/api/followed")
+        ? followed
+        : url.startsWith("/api/artists?")
+          ? artists
+          : artist;
 
     return Promise.resolve({ ok, status, json: () => Promise.resolve(body) });
   });
@@ -34,6 +44,7 @@ async function searchFor(term: string) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  location.hash = "";
 });
 
 it("shows nothing before the first search", () => {
@@ -269,6 +280,78 @@ it("offers the full search when no followed artist matches", async () => {
   expect(
     screen.getByText("No followed artists match — press Enter to search MusicBrainz."),
   ).toBeDefined();
+});
+
+it("opens an artist's releases from the home", async () => {
+  const fetchMock = stubFetch({
+    followed: [{ id: "abc", name: "Caetano Veloso" }],
+    releases: [
+      { id: "rg1", title: "Transa", firstReleaseDate: "1972-01-01" },
+      { id: "rg2", title: "Araçá Azul" },
+    ],
+  });
+  render(App);
+
+  await screen.findByText("Caetano Veloso");
+  await userEvent.click(screen.getByRole("link", { name: "Caetano Veloso" }));
+
+  expect(await screen.findByText("Transa")).toBeDefined();
+  expect(screen.getByText("1972")).toBeDefined();
+  expect(screen.getByText("Araçá Azul")).toBeDefined();
+  expect(screen.getByText("2 official releases")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
+
+  // the home already knew the name, so no artist lookup was made
+  const urls = fetchMock.mock.calls.map(([url]) => url);
+
+  expect(urls.filter((url) => url === "/api/artists/abc")).toEqual([]);
+});
+
+it("returns home from the artist page", async () => {
+  stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
+  render(App);
+
+  await screen.findByText("Caetano Veloso");
+  await userEvent.click(screen.getByRole("link", { name: "Caetano Veloso" }));
+  await screen.findByText("No official releases.");
+  await userEvent.click(screen.getByRole("link", { name: "Back to your artists" }));
+
+  expect(await screen.findByText("Caetano Veloso")).toBeDefined();
+  expect(screen.getByText("1 artist followed")).toBeDefined();
+});
+
+it("a deep link looks the artist's name up", async () => {
+  stubFetch({
+    artist: { id: "abc", name: "Caetano Veloso" },
+    releases: [{ id: "rg1", title: "Transa", firstReleaseDate: "1972-01-01" }],
+  });
+  location.hash = "#/artist/abc";
+  render(App);
+
+  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
+  expect(await screen.findByText("Transa")).toBeDefined();
+});
+
+it("a deep link to a followed artist uses the saved name", async () => {
+  const fetchMock = stubFetch({
+    followed: [{ id: "abc", name: "Caetano Veloso" }],
+  });
+  location.hash = "#/artist/abc";
+  render(App);
+
+  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
+
+  const urls = fetchMock.mock.calls.map(([url]) => url);
+
+  expect(urls.filter((url) => url === "/api/artists/abc")).toEqual([]);
+});
+
+it("shows the error when loading releases fails", async () => {
+  stubFetch({ ok: false, status: 503 });
+  location.hash = "#/artist/abc";
+  render(App);
+
+  expect(await screen.findByText("loading releases failed (503)")).toBeDefined();
 });
 
 it("hides the followed list once a search runs", async () => {

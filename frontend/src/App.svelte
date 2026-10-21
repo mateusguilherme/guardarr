@@ -7,6 +7,24 @@
     unfollowArtist,
     type Artist,
   } from "./lib/api";
+  import ArtistPage from "./lib/ArtistPage.svelte";
+
+  type Route = { page: "home" } | { page: "artist"; id: string };
+
+  // The hash is the router: "#/artist/<id>" opens an artist's releases and
+  // anything else is the home, so links survive reloads and the browser's
+  // back button keeps working.
+  function parseRoute(hash: string): Route {
+    const match = hash.match(/^#\/artist\/([^/]+)/);
+
+    if (match) {
+      return { page: "artist", id: decodeURIComponent(match[1]) };
+    }
+
+    return { page: "home" };
+  }
+
+  let route = $state(parseRoute(location.hash));
 
   type Search =
     | { status: "idle" }
@@ -20,6 +38,24 @@
 
   const followed = new SvelteMap<string, Artist>();
   const pending = new SvelteSet<string>();
+
+  // The artist page usually gets its name from state the home already
+  // holds — the followed map or the latest search results — so opening it
+  // costs no extra lookup.
+  let routeArtist = $derived.by(() => {
+    if (route.page !== "artist") {
+      return undefined;
+    }
+
+    const { id } = route;
+
+    return (
+      followed.get(id) ??
+      (search.status === "done"
+        ? search.artists.find((artist) => artist.id === id)
+        : undefined)
+    );
+  });
 
   // Failing to load the list only means an empty home and every button
   // starting as "Follow".
@@ -147,13 +183,15 @@
 
 {#snippet artistCard(artist: Artist, i: number)}
   <li style="--i: {i}">
-    <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
-    <div class="who">
-      <span class="name">{artist.name}</span>
-      {#if artist.disambiguation}
-        <span class="disambiguation">{artist.disambiguation}</span>
-      {/if}
-    </div>
+    <a class="open-artist" href="#/artist/{artist.id}">
+      <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
+      <div class="who">
+        <span class="name">{artist.name}</span>
+        {#if artist.disambiguation}
+          <span class="disambiguation">{artist.disambiguation}</span>
+        {/if}
+      </div>
+    </a>
     {#if followed.has(artist.id)}
       <button
         class="following"
@@ -188,100 +226,106 @@
   </li>
 {/snippet}
 
+<svelte:window onhashchange={() => (route = parseRoute(location.hash))} />
+
 <main>
-  <header class="hero">
-    <h1>
-      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="2.5" />
-        <circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" />
-        <circle cx="10" cy="10" r="1.5" fill="currentColor" />
-        <path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" />
-      </svg>
-      <span>guard<span class="arr">arr</span></span>
-    </h1>
-    <p class="tagline">
-      <i>guardar</i> <span class="ipa">/ɡwaʁˈdaʁ/</span> — Portuguese for “to
-      keep, to watch over”
-    </p>
-  </header>
-
-  <form class="search" onsubmit={submit}>
-    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
-      <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-    </svg>
-    <input bind:value={term} placeholder="Search an artist…" onkeydown={keydown} />
-    <button disabled={searching}>
-      {#if searching}<span class="spinner" aria-hidden="true"></span>{/if}
-      {searching ? "Searching…" : "Search"}
-    </button>
-  </form>
-
-  {#if search.status === "searching"}
-    <div class="skeletons" aria-hidden="true">
-      {#each { length: 4 } as _, i}
-        <div class="skeleton" style="--i: {i}">
-          <div class="skeleton-avatar"></div>
-          <div class="skeleton-lines">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line short"></div>
-          </div>
-        </div>
-      {/each}
-    </div>
-  {:else if search.status === "error"}
-    <div class="notice" role="alert">
-      <svg class="notice-icon error-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
-        <path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        <circle cx="12" cy="16.5" r="1.25" fill="currentColor" />
-      </svg>
-      <p class="error">{search.message}</p>
-      <p class="hint">MusicBrainz may be rate-limiting; try again in a moment.</p>
-    </div>
-  {:else if search.status === "done" && search.artists.length > 0}
-    <section class="results">
-      <p class="count">
-        {search.artists.length}
-        {search.artists.length === 1 ? "artist" : "artists"}
+  {#if route.page === "artist"}
+    <ArtistPage id={route.id} name={routeArtist?.name} />
+  {:else}
+    <header class="hero">
+      <h1>
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="2.5" />
+          <circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" />
+          <circle cx="10" cy="10" r="1.5" fill="currentColor" />
+          <path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" />
+        </svg>
+        <span>guard<span class="arr">arr</span></span>
+      </h1>
+      <p class="tagline">
+        <i>guardar</i> <span class="ipa">/ɡwaʁˈdaʁ/</span> — Portuguese for “to
+        keep, to watch over”
       </p>
-      <ul>
-        {#each search.artists as artist, i (artist.id)}
-          {@render artistCard(artist, i)}
-        {/each}
-      </ul>
-    </section>
-  {:else if search.status === "done"}
-    <div class="notice">
-      <svg class="notice-icon" viewBox="0 0 24 24" aria-hidden="true">
+    </header>
+
+    <form class="search" onsubmit={submit}>
+      <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
         <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        <path d="M8.5 11h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
       </svg>
-      <p class="empty">No artists found.</p>
-      <p class="hint">Try a different spelling or another name.</p>
-    </div>
-  {:else if search.status === "idle" && followed.size > 0}
-    <section class="results">
-      <p class="count">
-        {#if term.trim()}
-          {filteredFollowed.length} of {followed.size} followed
-        {:else}
-          {followed.size}
-          {followed.size === 1 ? "artist followed" : "artists followed"}
-        {/if}
-      </p>
-      {#if filteredFollowed.length > 0}
+      <input bind:value={term} placeholder="Search an artist…" onkeydown={keydown} />
+      <button disabled={searching}>
+        {#if searching}<span class="spinner" aria-hidden="true"></span>{/if}
+        {searching ? "Searching…" : "Search"}
+      </button>
+    </form>
+
+    {#if search.status === "searching"}
+      <div class="skeletons" aria-hidden="true">
+        {#each { length: 4 } as _, i}
+          <div class="skeleton" style="--i: {i}">
+            <div class="skeleton-avatar"></div>
+            <div class="skeleton-lines">
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line short"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else if search.status === "error"}
+      <div class="notice" role="alert">
+        <svg class="notice-icon error-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+          <path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <circle cx="12" cy="16.5" r="1.25" fill="currentColor" />
+        </svg>
+        <p class="error">{search.message}</p>
+        <p class="hint">MusicBrainz may be rate-limiting; try again in a moment.</p>
+      </div>
+    {:else if search.status === "done" && search.artists.length > 0}
+      <section class="results">
+        <p class="count">
+          {search.artists.length}
+          {search.artists.length === 1 ? "artist" : "artists"}
+        </p>
         <ul>
-          {#each filteredFollowed as artist, i (artist.id)}
+          {#each search.artists as artist, i (artist.id)}
             {@render artistCard(artist, i)}
           {/each}
         </ul>
-      {:else}
-        <p class="no-match">
-          No followed artists match — press Enter to search MusicBrainz.
+      </section>
+    {:else if search.status === "done"}
+      <div class="notice">
+        <svg class="notice-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
+          <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M8.5 11h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <p class="empty">No artists found.</p>
+        <p class="hint">Try a different spelling or another name.</p>
+      </div>
+    {:else if search.status === "idle" && followed.size > 0}
+      <section class="results">
+        <p class="count">
+          {#if term.trim()}
+            {filteredFollowed.length} of {followed.size} followed
+          {:else}
+            {followed.size}
+            {followed.size === 1 ? "artist followed" : "artists followed"}
+          {/if}
         </p>
-      {/if}
-    </section>
+        {#if filteredFollowed.length > 0}
+          <ul>
+            {#each filteredFollowed as artist, i (artist.id)}
+              {@render artistCard(artist, i)}
+            {/each}
+          </ul>
+        {:else}
+          <p class="no-match">
+            No followed artists match — press Enter to search MusicBrainz.
+          </p>
+        {/if}
+      </section>
+    {/if}
   {/if}
 </main>

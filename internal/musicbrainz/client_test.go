@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -80,6 +81,166 @@ func TestSearchArtistsNormalizesNullToEmpty(t *testing.T) {
 
 	if len(artists) != 0 {
 		t.Errorf("want no artists, got %+v", artists)
+	}
+}
+
+func TestArtist(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/artist/abc" {
+			t.Errorf("path = %q, want %q", got, "/artist/abc")
+		}
+
+		if got := r.URL.Query().Get("fmt"); got != "json" {
+			t.Errorf("fmt = %q, want %q", got, "json")
+		}
+
+		w.Write([]byte(`{"id": "abc", "name": "Caetano Veloso", "disambiguation": "Brazilian singer"}`))
+	}))
+
+	defer fake.Close()
+
+	artist, err := testClient(fake.URL).Artist(context.Background(), "abc")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := Artist{ID: "abc", Name: "Caetano Veloso", Disambiguation: "Brazilian singer"}
+
+	if artist != want {
+		t.Errorf("artist = %+v, want %+v", artist, want)
+	}
+}
+
+func TestArtistUnexpectedStatus(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	defer fake.Close()
+
+	if _, err := testClient(fake.URL).Artist(context.Background(), "nope"); err == nil {
+		t.Fatal("want an error on a 404 response, got nil")
+	}
+}
+
+func TestArtistReleasesKeepsOfficialAlbumsNewestFirst(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/release-group" {
+			t.Errorf("path = %q, want %q", got, "/release-group")
+		}
+
+		q := r.URL.Query()
+		want := "arid:abc AND primarytype:album AND status:official AND -secondarytype:*"
+
+		if got := q.Get("query"); got != want {
+			t.Errorf("query = %q, want %q", got, want)
+		}
+
+		if got := q.Get("fmt"); got != "json" {
+			t.Errorf("fmt = %q, want %q", got, "json")
+		}
+
+		w.Write([]byte(`{
+			"count": 4,
+			"release-groups": [
+				{"id": "rg1", "title": "Transa", "first-release-date": "1972-01-01", "secondary-types": []},
+				{"id": "rg2", "title": "Greatest Hits", "first-release-date": "1990", "secondary-types": ["Compilation"]},
+				{"id": "rg3", "title": "Araçá Azul", "first-release-date": "1973"},
+				{"id": "rg4", "title": "Lost Tapes", "secondary-types": []}
+			]
+		}`))
+	}))
+
+	defer fake.Close()
+
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The compilation is dropped, the rest come newest first with the
+	// undated album last.
+	want := []Release{
+		{ID: "rg3", Title: "Araçá Azul", FirstReleaseDate: "1973"},
+		{ID: "rg1", Title: "Transa", FirstReleaseDate: "1972-01-01"},
+		{ID: "rg4", Title: "Lost Tapes"},
+	}
+
+	if !slices.Equal(releases, want) {
+		t.Errorf("releases = %+v, want %+v", releases, want)
+	}
+}
+
+func TestArtistReleasesPaginates(t *testing.T) {
+	var offsets []string
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		offset := r.URL.Query().Get("offset")
+		offsets = append(offsets, offset)
+
+		if offset == "0" {
+			w.Write([]byte(`{"count": 2, "release-groups": [{"id": "rg1", "title": "One", "first-release-date": "2001"}]}`))
+			return
+		}
+
+		w.Write([]byte(`{"count": 2, "release-groups": [{"id": "rg2", "title": "Two", "first-release-date": "2002"}]}`))
+	}))
+
+	defer fake.Close()
+
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := []string{"0", "1"}; !slices.Equal(offsets, want) {
+		t.Errorf("offsets = %v, want %v", offsets, want)
+	}
+
+	want := []Release{
+		{ID: "rg2", Title: "Two", FirstReleaseDate: "2002"},
+		{ID: "rg1", Title: "One", FirstReleaseDate: "2001"},
+	}
+
+	if !slices.Equal(releases, want) {
+		t.Errorf("releases = %+v, want %+v", releases, want)
+	}
+}
+
+func TestArtistReleasesUnexpectedStatus(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	defer fake.Close()
+
+	if _, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc"); err == nil {
+		t.Fatal("want an error on a 503 response, got nil")
+	}
+}
+
+func TestArtistReleasesNormalizesNullToEmpty(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"count": 0, "release-groups": null}`))
+	}))
+
+	defer fake.Close()
+
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if releases == nil {
+		t.Fatal("want an empty slice, got nil")
+	}
+
+	if len(releases) != 0 {
+		t.Errorf("want no releases, got %+v", releases)
 	}
 }
 

@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  artistReleases,
   followArtist,
+  lookupArtist,
   followedArtists,
   searchArtists,
   unfollowArtist,
@@ -36,6 +38,39 @@ it("throws on a non-ok response", async () => {
   stubFetch(null, false, 502);
 
   await expect(searchArtists("x")).rejects.toThrow("search failed (502)");
+});
+
+it("looks up one artist", async () => {
+  const fetchMock = stubFetch(caetano);
+
+  const artist = await lookupArtist("abc");
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc");
+  expect(artist).toEqual(caetano);
+});
+
+it("throws when the artist lookup fails", async () => {
+  stubFetch(null, false, 502);
+
+  await expect(lookupArtist("abc")).rejects.toThrow(
+    "loading the artist failed (502)",
+  );
+});
+
+it("fetches an artist's releases", async () => {
+  const transa = { id: "rg1", title: "Transa", firstReleaseDate: "1972-01-01" };
+  const fetchMock = stubFetch([transa]);
+
+  const releases = await artistReleases("abc");
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc/releases");
+  expect(releases).toEqual([transa]);
+});
+
+it("throws when loading releases fails", async () => {
+  stubFetch(null, false, 502);
+
+  await expect(artistReleases("abc")).rejects.toThrow("loading releases failed (502)");
 });
 
 it("fetches the followed artists", async () => {

@@ -16,6 +16,8 @@ import (
 func New(mb *musicbrainz.Client, st *store.Store, static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/artists", searchArtists(mb))
+	mux.Handle("GET /api/artists/{id}", lookupArtist(mb))
+	mux.Handle("GET /api/artists/{id}/releases", artistReleases(mb))
 	mux.Handle("GET /api/followed", listFollowed(st))
 	mux.Handle("PUT /api/followed/{id}", followArtist(st))
 	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(st))
@@ -44,6 +46,44 @@ func searchArtists(mb *musicbrainz.Client) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		if err := json.NewEncoder(w).Encode(artists); err != nil {
+			log.Printf("encode response: %v", err)
+		}
+	}
+}
+
+func lookupArtist(mb *musicbrainz.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		artist, err := mb.Artist(r.Context(), id)
+
+		if err != nil {
+			log.Printf("musicbrainz artist %q: %v", id, err)
+			http.Error(w, "loading the artist failed", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if err := json.NewEncoder(w).Encode(artist); err != nil {
+			log.Printf("encode response: %v", err)
+		}
+	}
+}
+
+func artistReleases(mb *musicbrainz.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		releases, err := mb.ArtistReleases(r.Context(), id)
+
+		if err != nil {
+			log.Printf("musicbrainz releases for %q: %v", id, err)
+			http.Error(w, "loading the releases failed", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if err := json.NewEncoder(w).Encode(releases); err != nil {
 			log.Printf("encode response: %v", err)
 		}
 	}

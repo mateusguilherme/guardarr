@@ -212,6 +212,23 @@ li:hover {
   border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+/* the card's avatar and name open the artist's page */
+
+.open-artist {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0.875rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.open-artist:hover .name,
+.open-artist:focus-visible .name {
+  color: var(--accent);
+}
+
 .who {
   display: grid;
   flex: 1;
@@ -334,7 +351,8 @@ li:hover {
 }
 
 .skeleton-avatar,
-.skeleton-line {
+.skeleton-line,
+.skeleton-cover {
   background: linear-gradient(
     100deg,
     var(--border) 40%,
@@ -350,6 +368,141 @@ li:hover {
   text-align: center;
   font-size: 0.875rem;
   color: var(--muted);
+}
+
+/* artist page */
+
+.artist-header {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 0.5rem 0 1.5rem;
+}
+
+.back {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.back:hover,
+.back:focus-visible {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.back svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.artist-header h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: clamp(1.625rem, 6vw, 2.125rem);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* stands in for the name while a deep link resolves it */
+
+.artist-header .skeleton-line {
+  width: min(11rem, 50%);
+  height: 1.5rem;
+}
+
+/* releases */
+
+.releases {
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 1.25rem 1rem;
+}
+
+.releases li {
+  display: grid;
+  align-content: start;
+  gap: 0.125rem;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  margin-bottom: 0.375rem;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  transition: border-color 0.15s;
+}
+
+.releases li:hover .cover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.cover-fallback {
+  width: 42%;
+  height: 42%;
+  color: color-mix(in srgb, var(--accent) 50%, var(--muted));
+  opacity: 0.7;
+}
+
+.cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.release-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.release-year {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.release-skeletons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 1.25rem 1rem;
+  margin-top: 2rem;
+}
+
+.skeleton-release {
+  display: grid;
+  gap: 0.5rem;
+  animation: rise 0.35s backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.skeleton-cover {
+  aspect-ratio: 1;
+  border-radius: 0.75rem;
 }
 
 /* notices */
