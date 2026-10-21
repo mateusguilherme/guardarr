@@ -52,7 +52,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.New(musicbrainz.NewClient(), dist),
+		Handler:           server.New(musicbrainz.NewClient(), st, dist),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { searchArtists, type Artist } from "./lib/api";
+  import { SvelteSet } from "svelte/reactivity";
+  import {
+    followArtist,
+    followedArtists,
+    searchArtists,
+    type Artist,
+  } from "./lib/api";
 
   type Search =
     | { status: "idle" }
@@ -10,6 +16,32 @@
   let term = $state("");
   let search = $state<Search>({ status: "idle" });
   let searching = $derived(search.status === "searching");
+
+  const followed = new SvelteSet<string>();
+  const pending = new SvelteSet<string>();
+
+  // Failing to load the list only means every button starts as "Follow".
+  followedArtists().then(
+    (ids) => ids.forEach((id) => followed.add(id)),
+    () => {},
+  );
+
+  async function follow(id: string) {
+    if (followed.has(id) || pending.has(id)) {
+      return;
+    }
+
+    pending.add(id);
+
+    try {
+      await followArtist(id);
+      followed.add(id);
+    } catch {
+      // keep the button enabled so the user can retry
+    } finally {
+      pending.delete(id);
+    }
+  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -96,6 +128,29 @@
                 <span class="disambiguation">{artist.disambiguation}</span>
               {/if}
             </div>
+            {#if followed.has(artist.id)}
+              <span class="following">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M5 12.5 10 17.5 19 7"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Following
+              </span>
+            {:else}
+              <button
+                class="follow"
+                onclick={() => follow(artist.id)}
+                disabled={pending.has(artist.id)}
+              >
+                Follow
+              </button>
+            {/if}
           </li>
         {/each}
       </ul>

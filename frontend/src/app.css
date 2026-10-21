@@ -203,6 +203,7 @@ li:hover {
 
 .who {
   display: grid;
+  flex: 1;
   min-width: 0;
 }
 
@@ -216,6 +217,35 @@ li:hover {
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.follow {
+  flex: none;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.8125rem;
+  background: none;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.follow:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.following {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: none;
+  padding: 0.4rem 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.following svg {
+  width: 1em;
+  height: 1em;
 }
 
 /* skeletons */

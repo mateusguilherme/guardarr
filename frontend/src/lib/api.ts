@@ -13,3 +13,23 @@ export async function searchArtists(q: string): Promise<Artist[]> {
 
   return response.json();
 }
+
+export async function followedArtists(): Promise<string[]> {
+  const response = await fetch("/api/followed");
+
+  if (!response.ok) {
+    throw new Error(`loading followed artists failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function followArtist(id: string): Promise<void> {
+  const response = await fetch(`/api/followed/${encodeURIComponent(id)}`, {
+    method: "PUT",
+  });
+
+  if (!response.ok) {
+    throw new Error(`follow failed (${response.status})`);
+  }
+}
