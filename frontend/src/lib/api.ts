@@ -2,7 +2,6 @@ export type Artist = {
   id: string;
   name: string;
   disambiguation?: string;
-  score: number;
 };
 
 export async function searchArtists(q: string): Promise<Artist[]> {

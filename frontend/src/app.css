@@ -52,12 +52,6 @@ li {
   flex: 1;
 }
 
-.score {
-  margin-left: auto;
-  opacity: 0.5;
-  font-variant-numeric: tabular-nums;
-}
-
 .error {
   color: light-dark(#b00020, #ff8a80);
 }

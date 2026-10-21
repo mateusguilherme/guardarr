@@ -24,7 +24,6 @@ type Artist struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Disambiguation string `json:"disambiguation,omitempty"`
-	Score          int    `json:"score"`
 }
 
 type Client struct {

@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { searchArtists, type Artist } from "./api";
 
-const caetano: Artist = { id: "abc", name: "Caetano Veloso", score: 100 };
+const caetano: Artist = { id: "abc", name: "Caetano Veloso" };
 
 function stubFetch(body: unknown, ok = true, status = 200) {
   const fetchMock = vi

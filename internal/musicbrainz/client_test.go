@@ -44,7 +44,7 @@ func TestSearchArtists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(artists) != 1 || artists[0].Name != "Caetano Veloso" || artists[0].Score != 100 {
+	if len(artists) != 1 || artists[0].Name != "Caetano Veloso" {
 		t.Errorf("unexpected artists: %+v", artists)
 	}
 }

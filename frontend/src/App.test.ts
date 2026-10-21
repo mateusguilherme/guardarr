@@ -29,8 +29,8 @@ it("shows nothing before the first search", () => {
 
 it("lists the artists a search returns", async () => {
   stubFetch([
-    { id: "abc", name: "Caetano Veloso", score: 100 },
-    { id: "def", name: "Caetaneando", disambiguation: "tribute trio", score: 41 },
+    { id: "abc", name: "Caetano Veloso" },
+    { id: "def", name: "Caetaneando", disambiguation: "tribute trio" },
   ]);
   render(App);
 
