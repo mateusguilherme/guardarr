@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 var caetano = Artist{ID: "abc", Name: "Caetano Veloso"}
@@ -105,6 +106,32 @@ func TestDeleteArtistRemovesIt(t *testing.T) {
 func TestDeleteArtistIgnoresUnknownIDs(t *testing.T) {
 	if err := testStore(t).DeleteArtist(context.Background(), "nope"); err != nil {
 		t.Errorf("want a no-op, got %v", err)
+	}
+}
+
+func TestReadsProceedDuringAWrite(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer conn.Close()
+
+	// Hold the write lock the way a commit in progress does.
+	if _, err := conn.ExecContext(ctx, `BEGIN EXCLUSIVE`); err != nil {
+		t.Fatal(err)
+	}
+
+	defer conn.ExecContext(ctx, `ROLLBACK`)
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	if _, err := s.Artists(ctx); err != nil {
+		t.Fatalf("listing while a write holds the lock: %v", err)
 	}
 }
 

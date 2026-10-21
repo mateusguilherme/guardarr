@@ -34,8 +34,11 @@ type Store struct {
 // schema as needed. The caller owns the returned Store and must Close it.
 func Open(path string) (*Store, error) {
 	// busy_timeout makes concurrent writers wait instead of failing
-	// immediately with SQLITE_BUSY.
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	// immediately with SQLITE_BUSY. WAL lets reads proceed while a write
+	// commits; under the default rollback journal a steady run of writes
+	// can starve readers until busy_timeout gives up. WAL does mean extra
+	// -wal and -shm files beside the database, and no network filesystems.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 
 	if err != nil {
 		return nil, err
