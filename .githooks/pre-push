@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refuse the push when a test suite fails.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: go test -race ./..."
+go test -race ./...
+
+echo "pre-push: npm test (frontend)"
+cd frontend
+npm test

@@ -27,6 +27,12 @@ go test -race ./...             # backend
 cd frontend && npm test         # frontend
 ```
 
+A pre-push hook runs both suites; enable it once per clone with:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## Develop
 
 One command runs backend and frontend together, with hot reload on the UI:
