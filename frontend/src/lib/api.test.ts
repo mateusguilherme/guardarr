@@ -1,5 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { followArtist, followedArtists, searchArtists, type Artist } from "./api";
+import {
+  followArtist,
+  followedArtists,
+  searchArtists,
+  unfollowArtist,
+  type Artist,
+} from "./api";
 
 const caetano: Artist = { id: "abc", name: "Caetano Veloso" };
 
@@ -65,4 +71,20 @@ it("throws when following fails", async () => {
   stubFetch(null, false, 500);
 
   await expect(followArtist(caetano)).rejects.toThrow("follow failed (500)");
+});
+
+it("unfollows an artist with a delete request", async () => {
+  const fetchMock = stubFetch(null);
+
+  await unfollowArtist("abc");
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", {
+    method: "DELETE",
+  });
+});
+
+it("throws when unfollowing fails", async () => {
+  stubFetch(null, false, 500);
+
+  await expect(unfollowArtist("abc")).rejects.toThrow("unfollow failed (500)");
 });

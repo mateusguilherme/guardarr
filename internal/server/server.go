@@ -18,6 +18,7 @@ func New(mb *musicbrainz.Client, st *store.Store, static fs.FS) http.Handler {
 	mux.Handle("GET /api/artists", searchArtists(mb))
 	mux.Handle("GET /api/followed", listFollowed(st))
 	mux.Handle("PUT /api/followed/{id}", followArtist(st))
+	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(st))
 	mux.Handle("GET /", http.FileServerFS(static))
 
 	return mux
@@ -92,6 +93,18 @@ func followArtist(st *store.Store) http.HandlerFunc {
 		if err := st.SaveArtist(r.Context(), artist); err != nil {
 			log.Printf("follow artist: %v", err)
 			http.Error(w, "following the artist failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func unfollowArtist(st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := st.DeleteArtist(r.Context(), r.PathValue("id")); err != nil {
+			log.Printf("unfollow artist: %v", err)
+			http.Error(w, "unfollowing the artist failed", http.StatusInternalServerError)
 			return
 		}
 

@@ -232,20 +232,52 @@ li:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+/* "Following" is a button: hovering it reveals the unfollow action */
+
 .following {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  justify-content: center;
   flex: none;
-  padding: 0.4rem 0.25rem;
+  min-width: 6.5rem;
+  padding: 0.4rem 0.95rem;
   font-size: 0.8125rem;
   font-weight: 600;
+  background: none;
   color: var(--accent);
+  border: 1px solid transparent;
 }
 
 .following svg {
   width: 1em;
   height: 1em;
+}
+
+.following .when-idle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.following .when-hover {
+  display: none;
+  color: var(--danger);
+}
+
+.following:hover:not(:disabled),
+.following:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.following:hover:not(:disabled) .when-idle,
+.following:focus-visible:not(:disabled) .when-idle {
+  display: none;
+}
+
+.following:hover:not(:disabled) .when-hover,
+.following:focus-visible:not(:disabled) .when-hover {
+  display: inline;
 }
 
 /* skeletons */

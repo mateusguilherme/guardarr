@@ -4,6 +4,7 @@
     followArtist,
     followedArtists,
     searchArtists,
+    unfollowArtist,
     type Artist,
   } from "./lib/api";
 
@@ -41,6 +42,23 @@
       // keep the button enabled so the user can retry
     } finally {
       pending.delete(artist.id);
+    }
+  }
+
+  async function unfollow(id: string) {
+    if (!followed.has(id) || pending.has(id)) {
+      return;
+    }
+
+    pending.add(id);
+
+    try {
+      await unfollowArtist(id);
+      followed.delete(id);
+    } catch {
+      // still following; the button stays enabled so the user can retry
+    } finally {
+      pending.delete(id);
     }
   }
 
@@ -137,19 +155,27 @@
       {/if}
     </div>
     {#if followed.has(artist.id)}
-      <span class="following">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M5 12.5 10 17.5 19 7"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        Following
-      </span>
+      <button
+        class="following"
+        onclick={() => unfollow(artist.id)}
+        disabled={pending.has(artist.id)}
+        aria-label="Unfollow {artist.name}"
+      >
+        <span class="when-idle">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M5 12.5 10 17.5 19 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Following
+        </span>
+        <span class="when-hover">Unfollow</span>
+      </button>
     {:else}
       <button
         class="follow"

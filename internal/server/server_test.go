@@ -213,6 +213,50 @@ func TestFollowArtistRequiresAName(t *testing.T) {
 	}
 }
 
+func del(t *testing.T, url string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { resp.Body.Close() })
+
+	return resp
+}
+
+func TestUnfollowArtistRemovesIt(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	if resp := put(t, app.URL+"/api/followed/abc", `{"name": "Caetano Veloso"}`); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("follow status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+
+	if resp := del(t, app.URL+"/api/followed/abc"); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unfollow status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+
+	if artists := followed(t, app); len(artists) != 0 {
+		t.Errorf("want no artists, got %v", artists)
+	}
+}
+
+func TestUnfollowUnknownArtistIsANoOp(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	if resp := del(t, app.URL+"/api/followed/nope"); resp.StatusCode != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+}
+
 func TestServesTheFrontend(t *testing.T) {
 	app := newApp(t, func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("MusicBrainz should not be called for a page load")

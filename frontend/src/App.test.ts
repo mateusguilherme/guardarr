@@ -126,6 +126,43 @@ it("follows an artist from the results", async () => {
   expect(screen.queryByRole("button", { name: "Follow" })).toBeNull();
 });
 
+it("unfollows an artist from the results", async () => {
+  const fetchMock = stubFetch({
+    artists: [{ id: "abc", name: "Caetano Veloso" }],
+    followed: [{ id: "abc", name: "Caetano Veloso" }],
+  });
+
+  render(App);
+
+  await searchFor("caetano");
+  await screen.findByText("Caetano Veloso");
+  await userEvent.click(screen.getByText("Following"));
+
+  expect(await screen.findByRole("button", { name: "Follow" })).toBeDefined();
+  expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", { method: "DELETE" });
+  expect(screen.queryByText("Following")).toBeNull();
+});
+
+it("unfollowing on the home removes the card", async () => {
+  stubFetch({
+    followed: [
+      { id: "abc", name: "Caetano Veloso" },
+      { id: "def", name: "Djavan" },
+    ],
+  });
+
+  render(App);
+
+  await screen.findByText("Caetano Veloso");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Unfollow Caetano Veloso" }),
+  );
+
+  expect(await screen.findByText("1 artist followed")).toBeDefined();
+  expect(screen.queryByText("Caetano Veloso")).toBeNull();
+  expect(screen.getByText("Djavan")).toBeDefined();
+});
+
 it("lists the followed artists on the home", async () => {
   stubFetch({
     followed: [

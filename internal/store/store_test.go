@@ -80,6 +80,34 @@ func TestSaveArtistOverwritesDuplicates(t *testing.T) {
 	}
 }
 
+func TestDeleteArtistRemovesIt(t *testing.T) {
+	s := testStore(t)
+
+	if err := s.SaveArtist(context.Background(), caetano); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteArtist(context.Background(), caetano.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	artists, err := s.Artists(context.Background())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(artists) != 0 {
+		t.Errorf("want no artists, got %v", artists)
+	}
+}
+
+func TestDeleteArtistIgnoresUnknownIDs(t *testing.T) {
+	if err := testStore(t).DeleteArtist(context.Background(), "nope"); err != nil {
+		t.Errorf("want a no-op, got %v", err)
+	}
+}
+
 func TestOpenReusesAnExistingDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.db")
 	first, err := Open(path)

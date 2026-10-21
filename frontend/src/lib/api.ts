@@ -38,3 +38,13 @@ export async function followArtist(artist: Artist): Promise<void> {
     throw new Error(`follow failed (${response.status})`);
   }
 }
+
+export async function unfollowArtist(id: string): Promise<void> {
+  const response = await fetch(`/api/followed/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(`unfollow failed (${response.status})`);
+  }
+}

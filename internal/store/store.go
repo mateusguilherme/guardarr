@@ -93,6 +93,13 @@ func (s *Store) SaveArtist(ctx context.Context, a Artist) error {
 	return err
 }
 
+// DeleteArtist removes an artist. Deleting an unknown id is a no-op.
+func (s *Store) DeleteArtist(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM artists WHERE id = ?`, id)
+
+	return err
+}
+
 // Artists returns every saved artist, ordered by name.
 func (s *Store) Artists(ctx context.Context) ([]Artist, error) {
 	rows, err := s.db.QueryContext(
