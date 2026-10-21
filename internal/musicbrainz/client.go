@@ -110,5 +110,11 @@ func (c *Client) SearchArtists(ctx context.Context, term string) ([]Artist, erro
 		return nil, fmt.Errorf("musicbrainz: decode response: %w", err)
 	}
 
+	// A missing or null artists field decodes to a nil slice, which would
+	// re-encode as JSON null; normalize so callers always get an array.
+	if body.Artists == nil {
+		body.Artists = []Artist{}
+	}
+
 	return body.Artists, nil
 }
