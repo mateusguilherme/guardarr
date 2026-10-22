@@ -2,6 +2,7 @@
   import { resolve } from "$app/paths";
   import type { Artist } from "#lib/api.ts";
   import { getAppState } from "#lib/app-state.svelte.ts";
+  import Notice from "#lib/Notice.svelte";
 
   const app = getAppState();
 
@@ -61,49 +62,53 @@
   }
 </script>
 
-{#snippet artistCard(artist: Artist, i: number)}
-  <li style="--i: {i}">
-    <a class="open-artist" href={resolve("/artist/[id]", { id: artist.id })}>
-      <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
-      <div class="who">
-        <span class="name">{artist.name}</span>
-        {#if artist.disambiguation}
-          <span class="disambiguation">{artist.disambiguation}</span>
+{#snippet artistList(artists: Artist[])}
+  <ul>
+    {#each artists as artist, i (artist.id)}
+      <li style="--i: {i}">
+        <a class="open-artist" href={resolve("/artist/[id]", { id: artist.id })}>
+          <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
+          <div class="who">
+            <span class="name">{artist.name}</span>
+            {#if artist.disambiguation}
+              <span class="disambiguation">{artist.disambiguation}</span>
+            {/if}
+          </div>
+        </a>
+        {#if app.followed.has(artist.id)}
+          <button
+            class="following"
+            onclick={() => app.unfollow(artist.id)}
+            disabled={app.pending.has(artist.id)}
+            aria-label="Unfollow {artist.name}"
+          >
+            <span class="when-idle">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M5 12.5 10 17.5 19 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Following
+            </span>
+            <span class="when-hover">Unfollow</span>
+          </button>
+        {:else}
+          <button
+            class="follow"
+            onclick={() => app.follow(artist)}
+            disabled={app.pending.has(artist.id)}
+          >
+            Follow
+          </button>
         {/if}
-      </div>
-    </a>
-    {#if app.followed.has(artist.id)}
-      <button
-        class="following"
-        onclick={() => app.unfollow(artist.id)}
-        disabled={app.pending.has(artist.id)}
-        aria-label="Unfollow {artist.name}"
-      >
-        <span class="when-idle">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M5 12.5 10 17.5 19 7"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-          Following
-        </span>
-        <span class="when-hover">Unfollow</span>
-      </button>
-    {:else}
-      <button
-        class="follow"
-        onclick={() => app.follow(artist)}
-        disabled={app.pending.has(artist.id)}
-      >
-        Follow
-      </button>
-    {/if}
-  </li>
+      </li>
+    {/each}
+  </ul>
 {/snippet}
 
 <header class="hero">
@@ -147,37 +152,23 @@
     {/each}
   </div>
 {:else if app.search.status === "error"}
-  <div class="notice" role="alert">
-    <svg class="notice-icon error-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
-      <path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-      <circle cx="12" cy="16.5" r="1.25" fill="currentColor" />
-    </svg>
-    <p class="error">{app.search.message}</p>
-    <p class="hint">MusicBrainz may be rate-limiting; try again in a moment.</p>
-  </div>
+  <Notice error message={app.search.message} />
 {:else if app.search.status === "done" && app.search.artists.length > 0}
   <section class="results">
     <p class="count">
       {app.search.artists.length}
       {app.search.artists.length === 1 ? "artist" : "artists"}
     </p>
-    <ul>
-      {#each app.search.artists as artist, i (artist.id)}
-        {@render artistCard(artist, i)}
-      {/each}
-    </ul>
+    {@render artistList(app.search.artists)}
   </section>
 {:else if app.search.status === "done"}
-  <div class="notice">
-    <svg class="notice-icon" viewBox="0 0 24 24" aria-hidden="true">
+  <Notice message="No artists found." hint="Try a different spelling or another name.">
+    {#snippet icon()}
       <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
       <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
       <path d="M8.5 11h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-    </svg>
-    <p class="empty">No artists found.</p>
-    <p class="hint">Try a different spelling or another name.</p>
-  </div>
+    {/snippet}
+  </Notice>
 {:else if app.search.status === "idle" && app.followed.size > 0}
   <section class="results">
     <p class="count">
@@ -189,11 +180,7 @@
       {/if}
     </p>
     {#if filteredFollowed.length > 0}
-      <ul>
-        {#each filteredFollowed as artist, i (artist.id)}
-          {@render artistCard(artist, i)}
-        {/each}
-      </ul>
+      {@render artistList(filteredFollowed)}
     {:else}
       <p class="no-match">
         No followed artists match — press Enter to search MusicBrainz.

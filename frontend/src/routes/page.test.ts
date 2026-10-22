@@ -82,6 +82,8 @@ it("shows a message when the search finds nothing", async () => {
   await searchFor("zzzz");
 
   expect(await screen.findByText("No artists found.")).toBeDefined();
+  // the icon's shapes arrive through a snippet and must still be SVG
+  expect(document.querySelector(".notice-icon path")).toBeInstanceOf(SVGElement);
 });
 
 it("shows the error when the search fails", async () => {
@@ -91,6 +93,8 @@ it("shows the error when the search fails", async () => {
   await searchFor("caetano");
 
   expect(await screen.findByText("search failed (503)")).toBeDefined();
+  expect(screen.getByRole("alert")).toBeDefined();
+  expect(document.querySelector(".error-icon circle")).toBeInstanceOf(SVGElement);
   expect(screen.queryByText("No artists found.")).toBeNull();
 });
 

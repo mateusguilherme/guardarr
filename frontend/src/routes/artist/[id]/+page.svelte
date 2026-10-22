@@ -2,6 +2,7 @@
   import { resolve } from "$app/paths";
   import { lookupArtist } from "#lib/api.ts";
   import { getAppState } from "#lib/app-state.svelte.ts";
+  import Notice from "#lib/Notice.svelte";
   import type { PageProps } from "./$types";
 
   let { data, params }: PageProps = $props();
@@ -112,24 +113,14 @@
       </ul>
     </section>
   {:else}
-    <div class="notice">
-      <svg class="notice-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <Notice message="No official releases." hint="Only official albums show here for now.">
+      {#snippet icon()}
         <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
         <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" />
         <circle cx="12" cy="12" r="1.25" fill="currentColor" />
-      </svg>
-      <p class="empty">No official releases.</p>
-      <p class="hint">Only official albums show here for now.</p>
-    </div>
+      {/snippet}
+    </Notice>
   {/if}
 {:catch err}
-  <div class="notice" role="alert">
-    <svg class="notice-icon error-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
-      <path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-      <circle cx="12" cy="16.5" r="1.25" fill="currentColor" />
-    </svg>
-    <p class="error">{err instanceof Error ? err.message : String(err)}</p>
-    <p class="hint">MusicBrainz may be rate-limiting; try again in a moment.</p>
-  </div>
+  <Notice error message={err instanceof Error ? err.message : String(err)} />
 {/await}
