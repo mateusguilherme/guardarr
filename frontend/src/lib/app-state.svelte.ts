@@ -47,34 +47,40 @@ export class AppState {
   }
 
   async follow(artist: Artist) {
-    if (this.followed.has(artist.id) || this.pending.has(artist.id)) {
+    if (this.followed.has(artist.id)) {
       return;
     }
 
-    this.pending.add(artist.id);
-
-    try {
+    await this.#change(artist.id, async () => {
       await followArtist(artist);
       this.followed.set(artist.id, artist);
-    } catch {
-      // keep the button enabled so the user can retry
-    } finally {
-      this.pending.delete(artist.id);
-    }
+    });
   }
 
   async unfollow(id: string) {
-    if (!this.followed.has(id) || this.pending.has(id)) {
+    if (!this.followed.has(id)) {
+      return;
+    }
+
+    await this.#change(id, async () => {
+      await unfollowArtist(id);
+      this.followed.delete(id);
+    });
+  }
+
+  // #change runs a follow or an unfollow, one at a time per artist: the id
+  // stays pending until it settles.
+  async #change(id: string, change: () => Promise<void>) {
+    if (this.pending.has(id)) {
       return;
     }
 
     this.pending.add(id);
 
     try {
-      await unfollowArtist(id);
-      this.followed.delete(id);
+      await change();
     } catch {
-      // still following; the button stays enabled so the user can retry
+      // nothing changed; the button stays enabled so the user can retry
     } finally {
       this.pending.delete(id);
     }
