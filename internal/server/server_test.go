@@ -3,6 +3,7 @@ package server_test
 import (
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,12 +14,21 @@ import (
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
 	"github.com/mateusguilherme/guardarr/internal/server"
+	"github.com/mateusguilherme/guardarr/internal/slskd"
 	"github.com/mateusguilherme/guardarr/internal/store"
 )
 
 // newApp serves the application against a fake MusicBrainz handler, a fresh
 // temporary database, and an in-memory frontend, all cleaned up with the test.
+// slskd is left unconfigured.
 func newApp(t *testing.T, fakeMusicBrainz http.HandlerFunc) *httptest.Server {
+	t.Helper()
+
+	return newAppWithSlskd(t, fakeMusicBrainz, nil)
+}
+
+// newAppWithSlskd is newApp with sk as its slskd.
+func newAppWithSlskd(t *testing.T, fakeMusicBrainz http.HandlerFunc, sk *slskd.Client) *httptest.Server {
 	t.Helper()
 
 	fake := httptest.NewServer(fakeMusicBrainz)
@@ -39,7 +49,12 @@ func newApp(t *testing.T, fakeMusicBrainz http.HandlerFunc) *httptest.Server {
 		"_app/immutable/entry-abc12.js": &fstest.MapFile{Data: []byte("console.log('guardarr')")},
 	}
 
-	app := httptest.NewServer(server.New(musicbrainz.NewClientWithURL(fake.URL), st, static))
+	app := httptest.NewServer(server.New(server.Deps{
+		MusicBrainz: musicbrainz.NewClientWithURL(fake.URL),
+		Slskd:       sk,
+		Store:       st,
+		Static:      static,
+	}))
 	t.Cleanup(app.Close)
 
 	return app
@@ -457,5 +472,74 @@ func TestNeverCachesTheAppVersion(t *testing.T) {
 
 	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
 		t.Errorf("Cache-Control = %q, want %q", got, "no-cache")
+	}
+}
+
+// fakeSlskd serves handler as the slskd API and returns a client for it.
+func fakeSlskd(t *testing.T, handler http.HandlerFunc) *slskd.Client {
+	t.Helper()
+
+	fake := httptest.NewServer(handler)
+	t.Cleanup(fake.Close)
+
+	return slskd.NewClient(fake.URL, "")
+}
+
+func slskdStatus(t *testing.T, app *httptest.Server) map[string]bool {
+	t.Helper()
+
+	resp := get(t, app.URL+"/api/slskd/status")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var status map[string]bool
+
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+
+	return status
+}
+
+func TestSlskdStatusWithoutSlskd(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	want := map[string]bool{"configured": false, "connected": false, "loggedIn": false}
+
+	if got := slskdStatus(t, app); !maps.Equal(got, want) {
+		t.Errorf("status = %v, want %v", got, want)
+	}
+}
+
+func TestSlskdStatusReportsTheConnection(t *testing.T) {
+	sk := fakeSlskd(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v0/server" {
+			t.Errorf("path = %q, want %q", r.URL.Path, "/api/v0/server")
+		}
+
+		w.Write([]byte(`{"state": "Connected", "isConnected": true, "isLoggedIn": false}`))
+	})
+
+	app := newAppWithSlskd(t, noMusicBrainz(t), sk)
+
+	want := map[string]bool{"configured": true, "connected": true, "loggedIn": false}
+
+	if got := slskdStatus(t, app); !maps.Equal(got, want) {
+		t.Errorf("status = %v, want %v", got, want)
+	}
+}
+
+func TestSlskdStatusReportsUnreachableSlskd(t *testing.T) {
+	sk := fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	app := newAppWithSlskd(t, noMusicBrainz(t), sk)
+	resp := get(t, app.URL+"/api/slskd/status")
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
 	}
 }

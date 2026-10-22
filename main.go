@@ -14,6 +14,7 @@ import (
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
 	"github.com/mateusguilherme/guardarr/internal/server"
+	"github.com/mateusguilherme/guardarr/internal/slskd"
 	"github.com/mateusguilherme/guardarr/internal/store"
 )
 
@@ -26,6 +27,13 @@ var frontend embed.FS
 func main() {
 	addr := getEnv("GUARDARR_ADDR", ":8686")
 	dbPath := getEnv("GUARDARR_DB", "guardarr.db")
+
+	// slskd is optional: without its address guardarr only follows artists.
+	var sk *slskd.Client
+
+	if slskdURL := getEnv("GUARDARR_SLSKD_URL", ""); slskdURL != "" {
+		sk = slskd.NewClient(slskdURL, getEnv("GUARDARR_SLSKD_API_KEY", ""))
+	}
 
 	st, err := store.Open(dbPath)
 
@@ -41,9 +49,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	handler := server.New(server.Deps{
+		MusicBrainz: musicbrainz.NewClient(),
+		Slskd:       sk,
+		Store:       st,
+		Static:      dist,
+	})
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.New(musicbrainz.NewClient(), st, dist),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

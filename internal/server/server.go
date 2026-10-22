@@ -10,20 +10,29 @@ import (
 	"strings"
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
+	"github.com/mateusguilherme/guardarr/internal/slskd"
 	"github.com/mateusguilherme/guardarr/internal/store"
 )
 
+// Deps are what the routes serve from.
+type Deps struct {
+	MusicBrainz *musicbrainz.Client
+	Slskd       *slskd.Client // nil when slskd is not configured
+	Store       *store.Store
+	Static      fs.FS // the compiled frontend, served for everything outside /api
+}
+
 // New builds the application's HTTP handler with every route registered.
-// static holds the compiled frontend, served for everything outside /api.
-func New(mb *musicbrainz.Client, st *store.Store, static fs.FS) http.Handler {
+func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/artists", searchArtists(mb))
-	mux.Handle("GET /api/artists/{id}", lookupArtist(mb))
-	mux.Handle("GET /api/artists/{id}/releases", artistReleases(mb))
-	mux.Handle("GET /api/followed", listFollowed(st))
-	mux.Handle("PUT /api/followed/{id}", followArtist(st))
-	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(st))
-	mux.Handle("GET /", staticSite(static))
+	mux.Handle("GET /api/artists", searchArtists(d.MusicBrainz))
+	mux.Handle("GET /api/artists/{id}", lookupArtist(d.MusicBrainz))
+	mux.Handle("GET /api/artists/{id}/releases", artistReleases(d.MusicBrainz))
+	mux.Handle("GET /api/followed", listFollowed(d.Store))
+	mux.Handle("PUT /api/followed/{id}", followArtist(d.Store))
+	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(d.Store))
+	mux.Handle("GET /api/slskd/status", slskdStatus(d.Slskd))
+	mux.Handle("GET /", staticSite(d.Static))
 
 	return mux
 }
@@ -172,6 +181,33 @@ func unfollowArtist(st *store.Store) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// slskdStatus tells whether downloads can work. slskd is optional, so
+// without it the answer is "not configured" rather than an error.
+func slskdStatus(sk *slskd.Client) http.HandlerFunc {
+	type status struct {
+		Configured bool `json:"configured"`
+		Connected  bool `json:"connected"`
+		LoggedIn   bool `json:"loggedIn"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if sk == nil {
+			writeJSON(w, status{})
+			return
+		}
+
+		state, err := sk.Server(r.Context())
+
+		if err != nil {
+			log.Printf("slskd server state: %v", err)
+			http.Error(w, "reaching slskd failed", http.StatusBadGateway)
+			return
+		}
+
+		writeJSON(w, status{Configured: true, Connected: state.IsConnected, LoggedIn: state.IsLoggedIn})
 	}
 }
 
