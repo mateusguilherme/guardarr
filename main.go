@@ -24,17 +24,8 @@ import (
 var frontend embed.FS
 
 func main() {
-	addr := os.Getenv("GUARDARR_ADDR")
-
-	if addr == "" {
-		addr = ":8686"
-	}
-
-	dbPath := os.Getenv("GUARDARR_DB")
-
-	if dbPath == "" {
-		dbPath = "guardarr.db"
-	}
+	addr := getEnv("GUARDARR_ADDR", ":8686")
+	dbPath := getEnv("GUARDARR_DB", "guardarr.db")
 
 	st, err := store.Open(dbPath)
 
@@ -76,4 +67,12 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return fallback
 }
