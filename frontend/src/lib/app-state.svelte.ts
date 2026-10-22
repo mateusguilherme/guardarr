@@ -31,14 +31,19 @@ export class AppState {
   #searchSeq = 0;
 
   constructor() {
-    // Failing to load the list only means an empty home and every button
-    // starting as "Follow".
-    followedArtists()
-      .then(
-        (artists) => artists.forEach((artist) => this.followed.set(artist.id, artist)),
-        () => {},
-      )
-      .finally(() => (this.followedLoaded = true));
+    this.#loadFollowed();
+  }
+
+  async #loadFollowed() {
+    try {
+      for (const artist of await followedArtists()) {
+        this.followed.set(artist.id, artist);
+      }
+    } catch {
+      // only means an empty home and every button starting as "Follow"
+    } finally {
+      this.followedLoaded = true;
+    }
   }
 
   async follow(artist: Artist) {
