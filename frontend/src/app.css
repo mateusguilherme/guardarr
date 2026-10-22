@@ -5,12 +5,12 @@
   --accent: light-dark(#c8441f, #ff8a5c);
   --accent-strong: light-dark(#ab3512, #ffa47c);
   --accent-contrast: light-dark(#ffffff, #2a1208);
-  --bg: light-dark(#faf6f2, #161310);
-  --glow: light-dark(rgb(200 68 31 / 0.09), rgb(255 138 92 / 0.07));
-  --surface: light-dark(#ffffff, #201c19);
+  --bg: light-dark(#faf6f2, #0b0908);
+  --glow: light-dark(rgb(200 68 31 / 0.09), rgb(255 138 92 / 0.05));
+  --surface: light-dark(#ffffff, #151210);
   --text: light-dark(#262019, #efe9e3);
   --muted: light-dark(#87796d, #a2948a);
-  --border: light-dark(#eadfd5, #37302a);
+  --border: light-dark(#eadfd5, #29231f);
   --ring: color-mix(in srgb, var(--accent) 25%, transparent);
   --danger: light-dark(#b00020, #ff8a80);
   --shadow:
