@@ -51,10 +51,13 @@ func main() {
 
 	defer stop()
 
+	shutdownDone := make(chan struct{})
+
 	go func() {
+		defer close(shutdownDone)
+
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
 		defer cancel()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -67,6 +70,10 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+
+	// ListenAndServe returns as soon as Shutdown starts, so wait for the
+	// in-flight requests to finish before the deferred store close runs.
+	<-shutdownDone
 }
 
 func getEnv(key, fallback string) string {
