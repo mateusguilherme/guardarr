@@ -105,7 +105,7 @@
 
 {#if releases.status === "loading"}
   <div class="release-skeletons" aria-hidden="true">
-    {#each { length: 6 } as _, i}
+    {#each { length: 6 }, i}
       <div class="skeleton-release" style="--i: {i}">
         <div class="skeleton-cover"></div>
         <div class="skeleton-line"></div>

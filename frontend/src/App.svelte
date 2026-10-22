@@ -267,7 +267,7 @@
 
     {#if search.status === "searching"}
       <div class="skeletons" aria-hidden="true">
-        {#each { length: 4 } as _, i}
+        {#each { length: 4 }, i}
           <div class="skeleton" style="--i: {i}">
             <div class="skeleton-avatar"></div>
             <div class="skeleton-lines">

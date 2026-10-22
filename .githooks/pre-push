@@ -1,5 +1,5 @@
 #!/bin/sh
-# Refuse the push when a test suite fails.
+# Refuse the push when a test suite or the frontend linter fails.
 set -e
 
 cd "$(git rev-parse --show-toplevel)"
@@ -7,6 +7,10 @@ cd "$(git rev-parse --show-toplevel)"
 echo "pre-push: go test -race ./..."
 go test -race ./...
 
-echo "pre-push: npm test (frontend)"
 cd frontend
+
+echo "pre-push: npm run lint (frontend)"
+npm run lint
+
+echo "pre-push: npm test (frontend)"
 npm test

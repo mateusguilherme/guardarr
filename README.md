@@ -28,9 +28,10 @@ is created as `guardarr.db` in the working directory; override the path with
 ```sh
 go test -race ./...             # backend
 cd frontend && npm test         # frontend
+cd frontend && npm run lint     # frontend lint
 ```
 
-A pre-push hook runs both suites; enable it once per clone with:
+A pre-push hook runs the suites and the linter; enable it once per clone with:
 
 ```sh
 git config core.hooksPath .githooks
