@@ -21,6 +21,16 @@ function stubFetch(body: unknown, ok = true, status = 200) {
   return fetchMock;
 }
 
+// Following and unfollowing answer 204: a real Response, whose empty body
+// would fail to decode.
+function stubNoContent() {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -30,7 +40,7 @@ it("fetches and decodes artists", async () => {
 
   const artists = await searchArtists("caetano veloso");
 
-  expect(fetchMock).toHaveBeenCalledWith("/api/artists?q=caetano%20veloso");
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists?q=caetano%20veloso", {});
   expect(artists).toEqual([caetano]);
 });
 
@@ -45,7 +55,7 @@ it("looks up one artist", async () => {
 
   const artist = await lookupArtist("abc");
 
-  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc");
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc", {});
   expect(artist).toEqual(caetano);
 });
 
@@ -63,7 +73,7 @@ it("fetches an artist's releases", async () => {
 
   const releases = await artistReleases("abc");
 
-  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc/releases");
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc/releases", {});
   expect(releases).toEqual([transa]);
 });
 
@@ -78,7 +88,7 @@ it("fetches the followed artists", async () => {
 
   const artists = await followedArtists();
 
-  expect(fetchMock).toHaveBeenCalledWith("/api/followed");
+  expect(fetchMock).toHaveBeenCalledWith("/api/followed", {});
   expect(artists).toEqual([caetano]);
 });
 
@@ -91,9 +101,11 @@ it("throws when loading followed artists fails", async () => {
 });
 
 it("follows an artist with a put request", async () => {
-  const fetchMock = stubFetch(null);
+  const fetchMock = stubNoContent();
 
-  await followArtist({ ...caetano, disambiguation: "Brazilian singer" });
+  await expect(
+    followArtist({ ...caetano, disambiguation: "Brazilian singer" }),
+  ).resolves.toBeUndefined();
 
   expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", {
     method: "PUT",
@@ -109,9 +121,9 @@ it("throws when following fails", async () => {
 });
 
 it("unfollows an artist with a delete request", async () => {
-  const fetchMock = stubFetch(null);
+  const fetchMock = stubNoContent();
 
-  await unfollowArtist("abc");
+  await expect(unfollowArtist("abc")).resolves.toBeUndefined();
 
   expect(fetchMock).toHaveBeenCalledWith("/api/followed/abc", {
     method: "DELETE",

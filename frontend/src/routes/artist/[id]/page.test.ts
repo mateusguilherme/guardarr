@@ -66,7 +66,7 @@ it("loads the releases with the fetch SvelteKit passes in", async () => {
   } as unknown as Parameters<typeof load>[0]);
 
   expect(await data?.releases).toEqual([]);
-  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc/releases");
+  expect(fetchMock).toHaveBeenCalledWith("/api/artists/abc/releases", {});
 });
 
 it("lists the artist's releases", async () => {

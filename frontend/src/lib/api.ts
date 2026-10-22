@@ -4,24 +4,12 @@ export type Artist = {
   disambiguation?: string;
 };
 
-export async function lookupArtist(id: string): Promise<Artist> {
-  const response = await fetch(`/api/artists/${encodeURIComponent(id)}`);
-
-  if (!response.ok) {
-    throw new Error(`loading the artist failed (${response.status})`);
-  }
-
-  return response.json();
+export function lookupArtist(id: string): Promise<Artist> {
+  return request(`/api/artists/${encodeURIComponent(id)}`, "loading the artist failed");
 }
 
-export async function searchArtists(q: string): Promise<Artist[]> {
-  const response = await fetch(`/api/artists?q=${encodeURIComponent(q)}`);
-
-  if (!response.ok) {
-    throw new Error(`search failed (${response.status})`);
-  }
-
-  return response.json();
+export function searchArtists(q: string): Promise<Artist[]> {
+  return request(`/api/artists?q=${encodeURIComponent(q)}`, "search failed");
 }
 
 export type Release = {
@@ -32,31 +20,20 @@ export type Release = {
 
 // A load function passes in the fetch SvelteKit gives it, which the dev
 // server otherwise warns about.
-export async function artistReleases(
-  id: string,
-  fetch = globalThis.fetch,
-): Promise<Release[]> {
-  const response = await fetch(`/api/artists/${encodeURIComponent(id)}/releases`);
-
-  if (!response.ok) {
-    throw new Error(`loading releases failed (${response.status})`);
-  }
-
-  return response.json();
+export function artistReleases(id: string, fetch = globalThis.fetch): Promise<Release[]> {
+  return request(
+    `/api/artists/${encodeURIComponent(id)}/releases`,
+    "loading releases failed",
+    { fetch },
+  );
 }
 
-export async function followedArtists(): Promise<Artist[]> {
-  const response = await fetch("/api/followed");
-
-  if (!response.ok) {
-    throw new Error(`loading followed artists failed (${response.status})`);
-  }
-
-  return response.json();
+export function followedArtists(): Promise<Artist[]> {
+  return request("/api/followed", "loading followed artists failed");
 }
 
-export async function followArtist(artist: Artist): Promise<void> {
-  const response = await fetch(`/api/followed/${encodeURIComponent(artist.id)}`, {
+export function followArtist(artist: Artist): Promise<void> {
+  return request(`/api/followed/${encodeURIComponent(artist.id)}`, "follow failed", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -64,18 +41,30 @@ export async function followArtist(artist: Artist): Promise<void> {
       disambiguation: artist.disambiguation,
     }),
   });
-
-  if (!response.ok) {
-    throw new Error(`follow failed (${response.status})`);
-  }
 }
 
-export async function unfollowArtist(id: string): Promise<void> {
-  const response = await fetch(`/api/followed/${encodeURIComponent(id)}`, {
+export function unfollowArtist(id: string): Promise<void> {
+  return request(`/api/followed/${encodeURIComponent(id)}`, "unfollow failed", {
     method: "DELETE",
   });
+}
+
+// Options are fetch's own, plus the fetch to call them with.
+type Options = RequestInit & { fetch?: typeof globalThis.fetch };
+
+// request fetches an API path and decodes its body, unless the response is
+// not ok: then it throws an error that says what failed and with which status.
+async function request<T>(
+  path: string,
+  failure: string,
+  { fetch = globalThis.fetch, ...init }: Options = {},
+): Promise<T> {
+  const response = await fetch(path, init);
 
   if (!response.ok) {
-    throw new Error(`unfollow failed (${response.status})`);
+    throw new Error(`${failure} (${response.status})`);
   }
+
+  // following and unfollowing answer 204, with no body to decode
+  return response.status === 204 ? (undefined as T) : response.json();
 }
