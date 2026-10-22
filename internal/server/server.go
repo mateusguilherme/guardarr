@@ -64,11 +64,7 @@ func searchArtists(mb *musicbrainz.Client) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(artists); err != nil {
-			log.Printf("encode response: %v", err)
-		}
+		writeJSON(w, artists)
 	}
 }
 
@@ -83,11 +79,7 @@ func lookupArtist(mb *musicbrainz.Client) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(artist); err != nil {
-			log.Printf("encode response: %v", err)
-		}
+		writeJSON(w, artist)
 	}
 }
 
@@ -102,11 +94,7 @@ func artistReleases(mb *musicbrainz.Client) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(releases); err != nil {
-			log.Printf("encode response: %v", err)
-		}
+		writeJSON(w, releases)
 	}
 }
 
@@ -120,11 +108,7 @@ func listFollowed(st *store.Store) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(artists); err != nil {
-			log.Printf("encode response: %v", err)
-		}
+		writeJSON(w, artists)
 	}
 }
 
@@ -170,5 +154,14 @@ func unfollowArtist(st *store.Store) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// writeJSON sends v as the JSON response body.
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("encode response: %v", err)
 	}
 }
