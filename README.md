@@ -1,8 +1,9 @@
 # guardarr
 
-Artist search on MusicBrainz. Go backend with a Svelte 5 + TypeScript
-frontend, shipped as a single binary. Data lives in a SQLite database through
-a pure-Go driver, so building still needs no CGO.
+Artist search on MusicBrainz. Go backend with a SvelteKit + TypeScript
+frontend, built as a single-page app and shipped inside a single binary. Data
+lives in a SQLite database through a pure-Go driver, so building still needs
+no CGO.
 
 ## Run
 

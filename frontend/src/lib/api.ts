@@ -30,7 +30,12 @@ export type Release = {
   firstReleaseDate?: string;
 };
 
-export async function artistReleases(id: string): Promise<Release[]> {
+// A load function passes in the fetch SvelteKit gives it, which the dev
+// server otherwise warns about.
+export async function artistReleases(
+  id: string,
+  fetch = globalThis.fetch,
+): Promise<Release[]> {
   const response = await fetch(`/api/artists/${encodeURIComponent(id)}/releases`);
 
   if (!response.ok) {

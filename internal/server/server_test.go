@@ -33,8 +33,10 @@ func newApp(t *testing.T, fakeMusicBrainz http.HandlerFunc) *httptest.Server {
 	t.Cleanup(func() { st.Close() })
 
 	static := fstest.MapFS{
-		"index.html":            &fstest.MapFile{Data: []byte("<!doctype html><title>guardarr</title>")},
-		"assets/index-abc12.js": &fstest.MapFile{Data: []byte("console.log('guardarr')")},
+		"200.html":                      &fstest.MapFile{Data: []byte("<!doctype html><title>guardarr</title>")},
+		"robots.txt":                    &fstest.MapFile{Data: []byte("User-agent: *")},
+		"_app/version.json":             &fstest.MapFile{Data: []byte(`{"version":"1"}`)},
+		"_app/immutable/entry-abc12.js": &fstest.MapFile{Data: []byte("console.log('guardarr')")},
 	}
 
 	app := httptest.NewServer(server.New(musicbrainz.NewClientWithURL(fake.URL), st, static))
@@ -360,14 +362,64 @@ func TestServesTheFrontend(t *testing.T) {
 	}
 
 	if !strings.Contains(string(body), "guardarr") {
-		t.Errorf("index.html not served, got: %q", body)
+		t.Errorf("200.html not served, got: %q", body)
+	}
+}
+
+func TestServesTheFrontendOnItsOwnRoutes(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/artist/abc")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(body), "<title>guardarr</title>") {
+		t.Errorf("200.html not served, got: %q", body)
+	}
+}
+
+func TestServesFilesBesideThePage(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/robots.txt")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(body) != "User-agent: *" {
+		t.Errorf("body = %q, want robots.txt", body)
+	}
+}
+
+func TestMissingAppFileIsNotFound(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/_app/immutable/gone-abc12.js")
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
 
 func TestCachesHashedAssetsForever(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
-	resp := get(t, app.URL+"/assets/index-abc12.js")
+	resp := get(t, app.URL+"/_app/immutable/entry-abc12.js")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -384,6 +436,20 @@ func TestNeverCachesThePageItself(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
 	resp := get(t, app.URL+"/")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control = %q, want %q", got, "no-cache")
+	}
+}
+
+func TestNeverCachesTheAppVersion(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	resp := get(t, app.URL+"/_app/version.json")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)

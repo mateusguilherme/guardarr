@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import App from "./App.svelte";
+import { AppState, appStateContext } from "#lib/app-state.svelte.ts";
+import Page from "./+page.svelte";
 
 type StubOptions = {
   artists?: unknown;
@@ -37,6 +38,10 @@ function stubFetch({
   return fetchMock;
 }
 
+function renderHome(app = new AppState()) {
+  return render(Page, { context: appStateContext(app) });
+}
+
 async function searchFor(term: string) {
   await userEvent.type(screen.getByPlaceholderText("Search an artist…"), term);
   await userEvent.click(screen.getByRole("button", { name: "Search" }));
@@ -44,12 +49,11 @@ async function searchFor(term: string) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  location.hash = "";
 });
 
 it("shows nothing before the first search", () => {
   stubFetch();
-  render(App);
+  renderHome();
 
   expect(screen.queryByText("No artists found.")).toBeNull();
   expect(screen.queryByRole("list")).toBeNull();
@@ -62,7 +66,7 @@ it("lists the artists a search returns", async () => {
       { id: "def", name: "Caetaneando", disambiguation: "tribute trio" },
     ],
   });
-  render(App);
+  renderHome();
 
   await searchFor("caetano");
 
@@ -73,7 +77,7 @@ it("lists the artists a search returns", async () => {
 
 it("shows a message when the search finds nothing", async () => {
   stubFetch();
-  render(App);
+  renderHome();
 
   await searchFor("zzzz");
 
@@ -82,7 +86,7 @@ it("shows a message when the search finds nothing", async () => {
 
 it("shows the error when the search fails", async () => {
   stubFetch({ ok: false, status: 503 });
-  render(App);
+  renderHome();
 
   await searchFor("caetano");
 
@@ -93,7 +97,7 @@ it("shows the error when the search fails", async () => {
 it("does not search with an empty term", async () => {
   const fetchMock = stubFetch();
 
-  render(App);
+  renderHome();
 
   await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
@@ -110,7 +114,7 @@ it("marks artists that are already followed", async () => {
     ],
     followed: [{ id: "abc", name: "Caetano Veloso" }],
   });
-  render(App);
+  renderHome();
 
   await searchFor("caetano");
   await screen.findByText("Djavan");
@@ -122,7 +126,7 @@ it("marks artists that are already followed", async () => {
 it("follows an artist from the results", async () => {
   const fetchMock = stubFetch({ artists: [{ id: "abc", name: "Caetano Veloso" }] });
 
-  render(App);
+  renderHome();
 
   await searchFor("caetano");
   await screen.findByText("Caetano Veloso");
@@ -143,7 +147,7 @@ it("unfollows an artist from the results", async () => {
     followed: [{ id: "abc", name: "Caetano Veloso" }],
   });
 
-  render(App);
+  renderHome();
 
   await searchFor("caetano");
   await screen.findByText("Caetano Veloso");
@@ -162,7 +166,7 @@ it("unfollowing on the home removes the card", async () => {
     ],
   });
 
-  render(App);
+  renderHome();
 
   await screen.findByText("Caetano Veloso");
   await userEvent.click(
@@ -181,7 +185,7 @@ it("lists the followed artists on the home", async () => {
       { id: "def", name: "Caetaneando", disambiguation: "tribute trio" },
     ],
   });
-  render(App);
+  renderHome();
 
   expect(await screen.findByText("Caetano Veloso")).toBeDefined();
   expect(screen.getByText("tribute trio")).toBeDefined();
@@ -193,7 +197,7 @@ it("escape clears the search and shows the followed artists again", async () => 
     artists: [{ id: "abc", name: "Caetano Veloso" }],
     followed: [{ id: "def", name: "Djavan" }],
   });
-  render(App);
+  renderHome();
 
   await screen.findByText("Djavan");
   await searchFor("caetano");
@@ -213,7 +217,7 @@ it("returns to the followed artists when the text is erased", async () => {
     artists: [{ id: "abc", name: "Caetano Veloso" }],
     followed: [{ id: "def", name: "Djavan" }],
   });
-  render(App);
+  renderHome();
 
   await screen.findByText("Djavan");
   await searchFor("caetano");
@@ -227,7 +231,7 @@ it("returns to the followed artists when the text is erased", async () => {
 
 it("a second escape leaves the search field", async () => {
   stubFetch();
-  render(App);
+  renderHome();
 
   const input = screen.getByPlaceholderText<HTMLInputElement>("Search an artist…");
 
@@ -249,7 +253,7 @@ it("filters the followed artists while typing, ignoring accents", async () => {
       { id: "def", name: "Djavan" },
     ],
   });
-  render(App);
+  renderHome();
 
   await screen.findByText("Djavan");
   await userEvent.type(
@@ -268,7 +272,7 @@ it("filters the followed artists while typing, ignoring accents", async () => {
 
 it("offers the full search when no followed artist matches", async () => {
   stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
-  render(App);
+  renderHome();
 
   await screen.findByText("Caetano Veloso");
   await userEvent.type(
@@ -282,116 +286,37 @@ it("offers the full search when no followed artist matches", async () => {
   ).toBeDefined();
 });
 
-it("opens an artist's releases from the home", async () => {
-  const fetchMock = stubFetch({
-    followed: [{ id: "abc", name: "Caetano Veloso" }],
-    releases: [
-      { id: "rg1", title: "Transa", firstReleaseDate: "1972-01-01" },
-      { id: "rg2", title: "Araçá Azul" },
-    ],
-  });
-  render(App);
-
-  await screen.findByText("Caetano Veloso");
-  await userEvent.click(screen.getByRole("link", { name: "Caetano Veloso" }));
-
-  expect(await screen.findByText("Transa")).toBeDefined();
-  expect(screen.getByText("1972")).toBeDefined();
-  expect(screen.getByText("Araçá Azul")).toBeDefined();
-  expect(screen.getByText("2 official releases")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
-
-  // the home already knew the name, so no artist lookup was made
-  const urls = fetchMock.mock.calls.map(([url]) => url);
-
-  expect(urls.filter((url) => url === "/api/artists/abc")).toEqual([]);
-});
-
-it("returns home from the artist page", async () => {
+it("links each artist to its page", async () => {
   stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
-  render(App);
+  renderHome();
 
+  const link = await screen.findByRole("link", { name: "Caetano Veloso" });
+
+  expect(link.getAttribute("href")).toBe("/artist/abc");
+});
+
+it("keeps the search across a visit to an artist", async () => {
+  stubFetch({ artists: [{ id: "abc", name: "Caetano Veloso" }] });
+
+  const app = new AppState();
+  const home = renderHome(app);
+
+  await searchFor("caetano");
   await screen.findByText("Caetano Veloso");
-  await userEvent.click(screen.getByRole("link", { name: "Caetano Veloso" }));
-  await screen.findByText("No official releases.");
-  await userEvent.click(screen.getByRole("link", { name: "Back to your artists" }));
 
-  // The artist page's own heading also reads "Caetano Veloso", so wait on
-  // something only the home shows before looking for the card.
-  expect(await screen.findByText("1 artist followed")).toBeDefined();
-  expect(screen.getByRole("link", { name: "Caetano Veloso" })).toBeDefined();
-});
+  // Opening an artist unmounts the home; the layout keeps the state.
+  home.unmount();
+  renderHome(app);
 
-it("a deep link looks the artist's name up", async () => {
-  stubFetch({
-    artist: { id: "abc", name: "Caetano Veloso" },
-    releases: [{ id: "rg1", title: "Transa", firstReleaseDate: "1972-01-01" }],
-  });
-  location.hash = "#/artist/abc";
-  render(App);
-
-  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
-  expect(await screen.findByText("Transa")).toBeDefined();
-});
-
-it("a deep link to a followed artist uses the saved name", async () => {
-  const fetchMock = stubFetch({
-    followed: [{ id: "abc", name: "Caetano Veloso" }],
-  });
-  location.hash = "#/artist/abc";
-  render(App);
-
-  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
-
-  const urls = fetchMock.mock.calls.map(([url]) => url);
-
-  expect(urls.filter((url) => url === "/api/artists/abc")).toEqual([]);
-});
-
-it("a deep link loads the followed artists only once", async () => {
-  const fetchMock = stubFetch({
-    artist: { id: "abc", name: "Caetano Veloso" },
-  });
-  location.hash = "#/artist/abc";
-  render(App);
-
-  await screen.findByRole("heading", { name: "Caetano Veloso" });
-
-  const urls = fetchMock.mock.calls.map(([url]) => url);
-
-  expect(urls.filter((url) => url === "/api/followed")).toEqual(["/api/followed"]);
-});
-
-it("a deep link still finds the name when the followed list fails", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (url === "/api/followed") {
-        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
-      }
-
-      const body = url.endsWith("/releases") ? [] : { id: "abc", name: "Caetano Veloso" };
-
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
-    }),
-  );
-  location.hash = "#/artist/abc";
-  render(App);
-
-  expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
-});
-
-it("shows the error when loading releases fails", async () => {
-  stubFetch({ ok: false, status: 503 });
-  location.hash = "#/artist/abc";
-  render(App);
-
-  expect(await screen.findByText("loading releases failed (503)")).toBeDefined();
+  expect(screen.getByText("Caetano Veloso")).toBeDefined();
+  expect(
+    screen.getByPlaceholderText<HTMLInputElement>("Search an artist…").value,
+  ).toBe("caetano");
 });
 
 it("hides the followed list once a search runs", async () => {
   stubFetch({ followed: [{ id: "abc", name: "Caetano Veloso" }] });
-  render(App);
+  renderHome();
 
   await screen.findByText("Caetano Veloso");
   await searchFor("zzzz");

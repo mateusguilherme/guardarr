@@ -1,7 +1,8 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ]
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": ["src", "test", "*"],
+  "exclude": ["src/service-worker"]
 }

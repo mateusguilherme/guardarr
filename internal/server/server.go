@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/mateusguilherme/guardarr/internal/musicbrainz"
@@ -27,24 +28,41 @@ func New(mb *musicbrainz.Client, st *store.Store, static fs.FS) http.Handler {
 	return mux
 }
 
-// staticSite serves the frontend with cache headers suited to a Vite build.
-// Files under /assets/ carry a content hash in their name, so they never
-// change and may be cached forever. Everything else — index.html, the
-// favicon — says no-cache: embedded files have a zero modification time,
-// leaving the browser no validator to revalidate with, and a stale
-// index.html would point at asset hashes that no longer exist.
+// staticSite serves the SvelteKit build with cache headers suited to it.
+// Files under /_app/immutable/ carry a content hash in their name, so they
+// never change and may be cached forever. Everything else says no-cache:
+// embedded files have a zero modification time, leaving the browser no
+// validator to revalidate with, and a stale page would point at asset
+// hashes that no longer exist.
+//
+// No page is prerendered, so a path that names no file — "/", or a reload
+// of /artist/<id> — gets 200.html, which boots the app and lets its router
+// pick the page. Under /_app/ a missing file stays a 404, so a page from an
+// older build never runs HTML as one of its scripts.
 func staticSite(static fs.FS) http.Handler {
 	files := http.FileServerFS(static)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
+		if strings.HasPrefix(r.URL.Path, "/_app/immutable/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 
-		files.ServeHTTP(w, r)
+		if strings.HasPrefix(r.URL.Path, "/_app/") || isFile(static, r.URL.Path) {
+			files.ServeHTTP(w, r)
+			return
+		}
+
+		http.ServeFileFS(w, r, static, "200.html")
 	})
+}
+
+// isFile reports whether urlPath names a regular file in static.
+func isFile(static fs.FS, urlPath string) bool {
+	info, err := fs.Stat(static, strings.TrimPrefix(path.Clean(urlPath), "/"))
+
+	return err == nil && !info.IsDir()
 }
 
 func searchArtists(mb *musicbrainz.Client) http.HandlerFunc {
