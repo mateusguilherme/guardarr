@@ -25,16 +25,21 @@
 
     fetchedName = undefined;
 
-    lookupArtist(params.id).then(
-      (artist) => {
+    // An effect hands back its cleanup right away, so it cannot await
+    // itself; the lookup awaits in a function of its own.
+    async function lookUp() {
+      try {
+        const artist = await lookupArtist(params.id);
+
         if (!stale) {
           fetchedName = artist.name;
         }
-      },
-      () => {
+      } catch {
         // the releases still load; only the heading stays blank
-      },
-    );
+      }
+    }
+
+    lookUp();
 
     return () => {
       stale = true;
