@@ -36,12 +36,23 @@ func (e *StatusError) Error() string {
 	return "slskd: unexpected status " + e.Status + ": " + e.Reason
 }
 
+// State is the part of slskd's application state guardarr reads: its
+// /server route leaves out who it is logged in as, so this comes whole.
+type State struct {
+	Server ServerState `json:"server"`
+	User   UserState   `json:"user"`
+}
+
 // ServerState is slskd's connection to the Soulseek network: it can only
 // search and download while logged in.
 type ServerState struct {
-	Username    string `json:"username"`
-	IsConnected bool   `json:"isConnected"`
-	IsLoggedIn  bool   `json:"isLoggedIn"`
+	IsConnected bool `json:"isConnected"`
+	IsLoggedIn  bool `json:"isLoggedIn"`
+}
+
+// UserState is who slskd is on the network, named once it logs in.
+type UserState struct {
+	Username string `json:"username"`
 }
 
 // Search is a search slskd runs across the network in the background,
@@ -203,11 +214,11 @@ func refusal(body io.Reader) string {
 	return strings.TrimSpace(reason)
 }
 
-func (c *Client) Server(ctx context.Context) (ServerState, error) {
-	var state ServerState
+func (c *Client) State(ctx context.Context) (State, error) {
+	var state State
 
-	if err := c.do(ctx, http.MethodGet, "/server", nil, &state); err != nil {
-		return ServerState{}, err
+	if err := c.do(ctx, http.MethodGet, "/application", nil, &state); err != nil {
+		return State{}, err
 	}
 
 	return state, nil

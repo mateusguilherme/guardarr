@@ -120,6 +120,7 @@ it.each([
     { configured: true, reachable: true, loggedIn: false },
     "slskd answers, but it is not logged in to Soulseek.",
   ],
+  [{ configured: true, reachable: true, loggedIn: true }, "Logged in to Soulseek."],
   [
     { configured: true, reachable: false, loggedIn: false, problem: "slskd refused the API key." },
     "slskd refused the API key.",

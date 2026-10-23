@@ -690,15 +690,18 @@ func TestSavingSettingsRefusesBadOnes(t *testing.T) {
 
 func TestSavedSlskdSettingsTakeEffectAtOnce(t *testing.T) {
 	address := fakeSlskd(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/server" {
-			t.Errorf("path = %q, want %q", r.URL.Path, "/api/v0/server")
+		if r.URL.Path != "/api/v0/application" {
+			t.Errorf("path = %q, want %q", r.URL.Path, "/api/v0/application")
 		}
 
 		if got := r.Header.Get("X-API-Key"); got != "secret-key-0123456789" {
 			t.Errorf("X-API-Key = %q, want the saved key", got)
 		}
 
-		w.Write([]byte(`{"state": "Connected, LoggedIn", "username": "guardarr", "isConnected": true, "isLoggedIn": true}`))
+		w.Write([]byte(`{
+			"server": {"state": "Connected, LoggedIn", "isConnected": true, "isLoggedIn": true},
+			"user": {"username": "guardarr"}
+		}`))
 	})
 
 	app := newApp(t, noMusicBrainz(t))
@@ -730,7 +733,7 @@ func TestSlskdStatusSaysWhatIsWrong(t *testing.T) {
 		{
 			name: "not logged in",
 			address: fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
-				w.Write([]byte(`{"state": "Disconnected", "isConnected": false, "isLoggedIn": false}`))
+				w.Write([]byte(`{"server": {"state": "Disconnected", "isConnected": false, "isLoggedIn": false}, "user": {}}`))
 			}),
 			want: slskdConnection{Configured: true, Reachable: true},
 		},

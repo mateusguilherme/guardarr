@@ -42,7 +42,9 @@
       return { tone: "warn", text: "slskd answers, but it is not logged in to Soulseek." };
     }
 
-    return { tone: "ok", text: `Logged in to Soulseek as ${status.username}.` };
+    const as = status.username ? ` as ${status.username}` : "";
+
+    return { tone: "ok", text: `Logged in to Soulseek${as}.` };
   });
 
   async function checkStatus() {

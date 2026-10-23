@@ -56,26 +56,35 @@ func expectBody(t *testing.T, r *http.Request, want string) {
 	}
 }
 
-func TestServer(t *testing.T) {
+func TestState(t *testing.T) {
 	sk := fakeSlskd(t, func(w http.ResponseWriter, r *http.Request) {
-		expectRequest(t, r, http.MethodGet, "/api/v0/server")
+		expectRequest(t, r, http.MethodGet, "/api/v0/application")
 		w.Write([]byte(`{
-			"address": "vps.slsknet.org:2271",
-			"state": "Connected, LoggedIn",
-			"username": "guardarr",
-			"isConnected": true,
-			"isLoggedIn": true,
-			"isTransitioning": false
+			"pendingRestart": false,
+			"server": {
+				"address": "vps.slsknet.org:2271",
+				"state": "Connected, LoggedIn",
+				"isConnected": true,
+				"isLoggedIn": true,
+				"isTransitioning": false
+			},
+			"user": {
+				"username": "guardarr",
+				"privileges": {"isPrivileged": false, "privilegesRemaining": 0}
+			}
 		}`))
 	})
 
-	state, err := sk.Server(context.Background())
+	state, err := sk.State(context.Background())
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := ServerState{Username: "guardarr", IsConnected: true, IsLoggedIn: true}
+	want := State{
+		Server: ServerState{IsConnected: true, IsLoggedIn: true},
+		User:   UserState{Username: "guardarr"},
+	}
 
 	if state != want {
 		t.Errorf("state = %+v, want %+v", state, want)
@@ -84,15 +93,15 @@ func TestServer(t *testing.T) {
 
 func TestKeepsTheURLBase(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/slskd/api/v0/server" {
-			t.Errorf("path = %q, want %q", r.URL.Path, "/slskd/api/v0/server")
+		if r.URL.Path != "/slskd/api/v0/application" {
+			t.Errorf("path = %q, want %q", r.URL.Path, "/slskd/api/v0/application")
 		}
 
 		w.Write([]byte(`{}`))
 	}))
 	t.Cleanup(fake.Close)
 
-	if _, err := NewClient(fake.URL+"/slskd/", testKey).Server(context.Background()); err != nil {
+	if _, err := NewClient(fake.URL+"/slskd/", testKey).State(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -107,7 +116,7 @@ func TestSendsNoKeyWithoutOne(t *testing.T) {
 	}))
 	t.Cleanup(fake.Close)
 
-	if _, err := NewClient(fake.URL, "").Server(context.Background()); err != nil {
+	if _, err := NewClient(fake.URL, "").State(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -300,7 +309,7 @@ func TestUnexpectedStatusSaysWhyInPlainText(t *testing.T) {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 	})
 
-	_, err := sk.Server(context.Background())
+	_, err := sk.State(context.Background())
 	want := "slskd: unexpected status 502 Bad Gateway: Bad Gateway"
 
 	if err == nil || err.Error() != want {
@@ -313,7 +322,7 @@ func TestUnexpectedStatusWithoutReason(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 
-	_, err := sk.Server(context.Background())
+	_, err := sk.State(context.Background())
 
 	if err == nil || err.Error() != "slskd: unexpected status 401 Unauthorized" {
 		t.Errorf("err = %v, want the bare status", err)
@@ -325,7 +334,7 @@ func TestStatusErrorCarriesTheCode(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 
-	_, err := sk.Server(context.Background())
+	_, err := sk.State(context.Background())
 
 	var refused *StatusError
 
@@ -337,7 +346,7 @@ func TestStatusErrorCarriesTheCode(t *testing.T) {
 func TestUnconfiguredClientCallsNothing(t *testing.T) {
 	sk := NewClient("", testKey)
 
-	if _, err := sk.Server(context.Background()); !errors.Is(err, ErrNotConfigured) {
+	if _, err := sk.State(context.Background()); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
 }
@@ -362,19 +371,19 @@ func TestConfigureSwitchesTheSlskd(t *testing.T) {
 
 	sk := NewClient(fakes[0].URL, "key-0")
 
-	if _, err := sk.Server(context.Background()); err != nil {
+	if _, err := sk.State(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	sk.Configure(fakes[1].URL, "key-1")
 
-	if _, err := sk.Server(context.Background()); err != nil {
+	if _, err := sk.State(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	sk.Configure("", "")
 
-	if _, err := sk.Server(context.Background()); !errors.Is(err, ErrNotConfigured) {
+	if _, err := sk.State(context.Background()); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("err = %v, want ErrNotConfigured once cleared", err)
 	}
 

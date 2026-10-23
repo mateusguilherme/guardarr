@@ -335,20 +335,20 @@ func slskdStatus(sk *slskd.Client) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
-		state, err := sk.Server(ctx)
+		state, err := sk.State(ctx)
 
 		switch {
 		case errors.Is(err, slskd.ErrNotConfigured):
 			writeJSON(w, status{})
 		case err != nil:
-			log.Printf("slskd server state: %v", err)
+			log.Printf("slskd state: %v", err)
 			writeJSON(w, status{Configured: true, Problem: slskdProblem(err)})
 		default:
 			writeJSON(w, status{
 				Configured: true,
 				Reachable:  true,
-				LoggedIn:   state.IsLoggedIn,
-				Username:   state.Username,
+				LoggedIn:   state.Server.IsLoggedIn,
+				Username:   state.User.Username,
 			})
 		}
 	}
