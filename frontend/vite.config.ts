@@ -19,7 +19,12 @@ export default defineConfig({
     // During development Vite serves the frontend and forwards API calls
     // to the Go backend, so fetch('/api/...') works on both setups.
     proxy: {
-      '/api': 'http://localhost:8686',
+      '/api': {
+        target: 'http://localhost:8686',
+        // A browser opening an /api address gets the app and its not-found
+        // page from Vite, as the Go server would serve them.
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
+      },
     },
   },
   test: {

@@ -32,6 +32,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("PUT /api/followed/{id}", followArtist(d.Store))
 	mux.Handle("DELETE /api/followed/{id}", unfollowArtist(d.Store))
 	mux.Handle("GET /api/slskd/status", slskdStatus(d.Slskd))
+	mux.Handle("GET /api/", apiNotFound(d.Static))
 	mux.Handle("GET /", staticSite(d.Static))
 
 	return mux
@@ -65,6 +66,32 @@ func staticSite(static fs.FS) http.Handler {
 
 		http.ServeFileFS(w, r, static, "200.html")
 	})
+}
+
+// apiNotFound answers an API path that does not exist with a 404. Code
+// calling the API gets it in plain text, never the app's page it would fail
+// to decode; a browser that opened the address gets the app, which shows
+// its own not-found page.
+func apiNotFound(static fs.FS) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+			http.NotFound(w, r)
+			return
+		}
+
+		page, err := fs.ReadFile(static, "200.html")
+
+		if err != nil {
+			log.Printf("read the app page: %v", err)
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write(page)
+	}
 }
 
 // isFile reports whether urlPath names a regular file in static.

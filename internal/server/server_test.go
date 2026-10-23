@@ -431,6 +431,56 @@ func TestMissingAppFileIsNotFound(t *testing.T) {
 	}
 }
 
+func TestUnknownAPIPathIsNotFound(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	for _, path := range []string{"/api/nope", "/api/artists/abc/nope"} {
+		resp := get(t, app.URL+path)
+
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: status = %d, want %d", path, resp.StatusCode, http.StatusNotFound)
+		}
+	}
+}
+
+func TestUnknownAPIPathOpensTheAppInABrowser(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	req, err := http.NewRequest(http.MethodGet, app.URL+"/api/nope", nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// what a browser sends when it navigates to an address
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", got)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(body), "<title>guardarr</title>") {
+		t.Errorf("body = %q, want the app's page", body)
+	}
+}
+
 func TestCachesHashedAssetsForever(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
