@@ -11,11 +11,12 @@ import (
 	"time"
 )
 
-// testClient returns a client with a short throttle interval so tests
-// do not sleep for the real MusicBrainz spacing.
+// testClient returns a client with a short throttle interval and backoff
+// so tests do not sleep for the real MusicBrainz spacing.
 func testClient(apiURL string) *Client {
 	c := NewClientWithURL(apiURL)
 	c.interval = 10 * time.Millisecond
+	c.backoff = 10 * time.Millisecond
 
 	return c
 }
@@ -415,6 +416,104 @@ func TestThrottleHonorsCancellation(t *testing.T) {
 
 	start := time.Now()
 	err := c.throttle(ctx)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("cancellation took %v, want a prompt return", elapsed)
+	}
+}
+
+func TestBusyMusicBrainzIsAskedAgain(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		if requests <= busyRetries {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error": "The MusicBrainz web server is currently busy. Please try again later."}`))
+			return
+		}
+
+		w.Write([]byte(`{"artists": [{"id": "abc", "name": "Caetano Veloso"}]}`))
+	}))
+
+	defer fake.Close()
+
+	artists, err := testClient(fake.URL).SearchArtists(context.Background(), "caetano")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(artists) != 1 || artists[0].Name != "Caetano Veloso" {
+		t.Errorf("unexpected artists: %+v", artists)
+	}
+
+	if requests != busyRetries+1 {
+		t.Errorf("server saw %d requests, want %d", requests, busyRetries+1)
+	}
+}
+
+func TestBusyMusicBrainzIsGivenUpOn(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	defer fake.Close()
+
+	if _, err := testClient(fake.URL).Artist(context.Background(), "abc"); !errors.Is(err, errBusy) {
+		t.Errorf("err = %v, want %v", err, errBusy)
+	}
+
+	if requests != busyRetries+1 {
+		t.Errorf("server saw %d requests, want %d", requests, busyRetries+1)
+	}
+}
+
+func TestOtherFailuresAreNotAskedAgain(t *testing.T) {
+	requests := 0
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	defer fake.Close()
+
+	if _, err := testClient(fake.URL).Artist(context.Background(), "abc"); err == nil {
+		t.Fatal("want an error on a 500 response, got nil")
+	}
+
+	if requests != 1 {
+		t.Errorf("server saw %d requests, want 1", requests)
+	}
+}
+
+func TestBusyWaitHonorsCancellation(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	defer fake.Close()
+
+	c := testClient(fake.URL)
+	c.backoff = time.Hour
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+
+	defer cancel()
+
+	start := time.Now()
+	_, err := c.Artist(ctx, "abc")
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want %v", err, context.DeadlineExceeded)

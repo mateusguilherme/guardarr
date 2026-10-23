@@ -5,6 +5,7 @@ package musicbrainz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -21,6 +22,11 @@ const (
 	// MusicBrainz limits clients to ~1 request per second per IP and replies
 	// 503 above that, so requests are spaced out instead of failed and retried.
 	minInterval = 1100 * time.Millisecond
+	// MusicBrainz also sheds load when the whole service is busy, answering
+	// 503 to clients well within their rate; the same request goes through
+	// a few seconds later, so it is asked again after 1s, 2s and then 4s.
+	busyRetries = 3
+	busyBackoff = time.Second
 	// An artist's data and discography change rarely, while every page view
 	// asks for them again; repeats served from memory skip the throttle wait
 	// entirely. One hour bounds how long a brand-new release can stay hidden.
@@ -47,6 +53,7 @@ type Release struct {
 type Client struct {
 	apiURL   string
 	interval time.Duration // minimum spacing between requests
+	backoff  time.Duration // the first wait before asking a busy MusicBrainz again
 	http     *http.Client
 	slot     chan struct{} // the one token a request takes to leave
 
@@ -58,6 +65,7 @@ func NewClient() *Client {
 	c := &Client{
 		apiURL:   apiURL,
 		interval: minInterval,
+		backoff:  busyBackoff,
 		slot:     make(chan struct{}, 1),
 		artists:  newTTLCache[Artist](cacheTTL),
 		releases: newTTLCache[[]Release](cacheTTL),
@@ -110,15 +118,41 @@ func (c *Client) throttle(ctx context.Context) error {
 	return nil
 }
 
-// getJSON performs one throttled request against path and decodes the JSON
-// response into out, straight off the socket; the body is never buffered whole.
+// errBusy is MusicBrainz turning a request away for now.
+var errBusy = errors.New("musicbrainz: busy (503 Service Unavailable)")
+
+// getJSON requests path and decodes the JSON response into out. While
+// MusicBrainz is busy it asks again, waiting twice as long each time.
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
+	query.Set("fmt", "json")
+	address := c.apiURL + path + "?" + query.Encode()
+	wait := c.backoff
+
+	for retries := 0; ; retries++ {
+		err := c.fetchJSON(ctx, address, out)
+
+		if !errors.Is(err, errBusy) || retries == busyRetries {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+
+		wait *= 2
+	}
+}
+
+// fetchJSON performs one throttled request and decodes the JSON response
+// into out, straight off the socket; the body is never buffered whole.
+func (c *Client) fetchJSON(ctx context.Context, address string, out any) error {
 	if err := c.throttle(ctx); err != nil {
 		return err
 	}
 
-	query.Set("fmt", "json")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+path+"?"+query.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 
 	if err != nil {
 		return err
@@ -132,6 +166,10 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return errBusy
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("musicbrainz: unexpected status %s", resp.Status)
