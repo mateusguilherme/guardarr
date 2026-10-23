@@ -2,7 +2,13 @@ import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { AppState, appStateContext } from "#lib/app-state.svelte.ts";
+import SearchBar from "#lib/SearchBar.svelte";
 import Page from "./+page.svelte";
+
+// The search bar sits in the header and asks SvelteKit where it is; here it
+// is always on the home.
+vi.mock("$app/state", () => ({ page: { route: { id: "/" } } }));
+vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 
 type StubOptions = {
   artists?: unknown;
@@ -38,7 +44,15 @@ function stubFetch({
   return fetchMock;
 }
 
+// renderHome mounts the home under the header's search bar, both on app,
+// as the layout does, and returns the home alone.
 function renderHome(app = new AppState()) {
+  render(SearchBar, { context: appStateContext(app) });
+
+  return renderPage(app);
+}
+
+function renderPage(app: AppState) {
   return render(Page, { context: appStateContext(app) });
 }
 
@@ -308,9 +322,10 @@ it("keeps the search across a visit to an artist", async () => {
   await searchFor("caetano");
   await screen.findByText("Caetano Veloso");
 
-  // Opening an artist unmounts the home; the layout keeps the state.
+  // Opening an artist unmounts the home; the layout, search bar and all,
+  // stays, and so does the state it holds.
   home.unmount();
-  renderHome(app);
+  renderPage(app);
 
   expect(screen.getByText("Caetano Veloso")).toBeDefined();
   expect(

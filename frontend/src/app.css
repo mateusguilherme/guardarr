@@ -1,5 +1,8 @@
 :root {
   color-scheme: light dark;
+  /* keeps what scrolls into view, a focused field say, clear of the
+     fixed header */
+  scroll-padding-top: 5rem;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --accent: light-dark(#c8441f, #ff8a5c);
@@ -16,6 +19,8 @@
   --shadow:
     0 1px 2px rgb(0 0 0 / 0.04),
     0 8px 24px -12px rgb(0 0 0 / 0.18);
+  /* the column the header and every page share */
+  --page-width: 60rem;
 }
 
 body {
@@ -28,27 +33,60 @@ body {
 }
 
 main {
-  max-width: 38rem;
+  max-width: var(--page-width);
   margin: 0 auto;
-  padding: clamp(1.25rem, 4vh, 2.5rem) 1rem 2rem;
+  padding: clamp(1.25rem, 4vh, 2.25rem) 1rem 2rem;
 }
 
-/* hero */
+/* app header, on every page, fixed to the top as the page scrolls */
 
-.hero {
-  text-align: center;
-  margin-bottom: 2rem;
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  backdrop-filter: blur(12px);
 }
 
-h1 {
+.app-header-content {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin: 0;
-  font-size: clamp(2.25rem, 7vw, 3rem);
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+}
+
+/* on a narrow screen the search takes a row of its own, under the brand */
+
+@media (max-width: 40rem) {
+  :root {
+    scroll-padding-top: 8rem;
+  }
+
+  .app-header-content {
+    flex-wrap: wrap;
+    row-gap: 0.625rem;
+  }
+
+  .app-header-content .search {
+    order: 1;
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.5rem;
   font-weight: 750;
   letter-spacing: -0.035em;
+  color: inherit;
+  text-decoration: none;
 }
 
 .mark {
@@ -61,28 +99,18 @@ h1 {
   color: var(--accent);
 }
 
-.tagline {
-  margin: 0.5rem 0 0;
-  font-size: 0.9375rem;
-  color: var(--muted);
-}
-
-.ipa {
-  font-size: 0.8125rem;
-  opacity: 0.8;
-}
-
-/* search */
+/* search, in the header */
 
 .search {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.4rem 0.4rem 1rem;
+  max-width: 34rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.875rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  box-shadow: var(--shadow);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
@@ -90,14 +118,24 @@ h1 {
 
 .search:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--ring), var(--shadow);
+  box-shadow: 0 0 0 4px var(--ring);
 }
 
 .search-icon {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.125rem;
+  height: 1.125rem;
   flex: none;
   color: var(--muted);
+}
+
+.search input {
+  padding: 0.375rem 0;
+  font-size: 0.9375rem;
+}
+
+.search button {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
 }
 
 input {
@@ -158,7 +196,7 @@ button:disabled {
 /* results */
 
 .results {
-  margin-top: 2rem;
+  margin-top: 0;
 }
 
 .count {
@@ -310,10 +348,17 @@ li:hover {
 
 /* skeletons */
 
+/* lists of artists tile into columns as the page widens */
+
+.artists,
+.skeletons {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+
 .skeletons {
   display: grid;
   gap: 0.5rem;
-  margin-top: 4.0625rem;
+  margin-top: 2.0625rem;
 }
 
 .skeleton {

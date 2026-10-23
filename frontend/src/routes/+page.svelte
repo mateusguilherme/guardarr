@@ -6,13 +6,6 @@
 
   const app = getAppState();
 
-  let searching = $derived(app.search.status === "searching");
-
-  function submit(event: SubmitEvent) {
-    event.preventDefault();
-    app.runSearch();
-  }
-
   // fold lowercases and strips accents, so "jose" matches "José".
   function fold(s: string) {
     return s
@@ -38,32 +31,10 @@
     );
   });
 
-  // Emptying the field by any means (escape, backspace, delete…) returns
-  // to the followed artists, discarding any search still in flight.
-  $effect(() => {
-    if (app.term.trim() === "" && app.search.status !== "idle") {
-      app.resetSearch();
-    }
-  });
-
-  function keydown(event: KeyboardEvent) {
-    if (event.key !== "Escape") {
-      return;
-    }
-
-    // First escape clears the text (the effect above restores the home);
-    // with nothing left to clear, a second one leaves the field.
-    if (app.term === "") {
-      (event.currentTarget as HTMLInputElement).blur();
-      return;
-    }
-
-    app.term = "";
-  }
 </script>
 
 {#snippet artistList(artists: Artist[])}
-  <ul>
+  <ul class="artists">
     {#each artists as artist, i (artist.id)}
       <li style="--i: {i}">
         <a class="open-artist" href={resolve("/artist/[id]", { id: artist.id })}>
@@ -110,34 +81,6 @@
     {/each}
   </ul>
 {/snippet}
-
-<header class="hero">
-  <h1>
-    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="2.5" />
-      <circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" />
-      <circle cx="10" cy="10" r="1.5" fill="currentColor" />
-      <path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" />
-    </svg>
-    <span>guard<span class="arr">arr</span></span>
-  </h1>
-  <p class="tagline">
-    <i>guardar</i> <span class="ipa">/ɡwaʁˈdaʁ/</span> — Portuguese for “to
-    keep, to watch over”
-  </p>
-</header>
-
-<form class="search" onsubmit={submit}>
-  <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
-    <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-  </svg>
-  <input bind:value={app.term} placeholder="Search an artist…" onkeydown={keydown} />
-  <button disabled={searching}>
-    {#if searching}<span class="spinner" aria-hidden="true"></span>{/if}
-    {searching ? "Searching…" : "Search"}
-  </button>
-</form>
 
 {#if app.search.status === "searching"}
   <div class="skeletons" aria-hidden="true">
