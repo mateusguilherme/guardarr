@@ -53,7 +53,7 @@
   }
 </script>
 
-<header class="artist-header">
+<header class="page-header">
   <a class="back" href={resolve("/")} aria-label="Back to your artists">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path

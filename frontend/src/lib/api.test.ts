@@ -4,7 +4,10 @@ import {
   followArtist,
   lookupArtist,
   followedArtists,
+  saveSettings,
   searchArtists,
+  settings,
+  slskdStatus,
   unfollowArtist,
   type Artist,
 } from "./api";
@@ -134,4 +137,40 @@ it("throws when unfollowing fails", async () => {
   stubFetch(null, false, 500);
 
   await expect(unfollowArtist("abc")).rejects.toThrow("unfollow failed (500)");
+});
+
+it("loads the settings", async () => {
+  const saved = { slskd: { url: "http://localhost:5030", hasApiKey: true } };
+  const fetchMock = stubFetch(saved);
+
+  expect(await settings()).toEqual(saved);
+  expect(fetchMock).toHaveBeenCalledWith("/api/settings", {});
+});
+
+it("saves only the settings it is given", async () => {
+  const fetchMock = stubNoContent();
+
+  await expect(saveSettings({ slskd: { url: "http://localhost:5030" } })).resolves.toBeUndefined();
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: '{"slskd":{"url":"http://localhost:5030"}}',
+  });
+});
+
+it("throws when saving the settings fails", async () => {
+  stubFetch(null, false, 400);
+
+  await expect(saveSettings({ slskd: { url: "x" } })).rejects.toThrow(
+    "saving the settings failed (400)",
+  );
+});
+
+it("checks slskd", async () => {
+  const status = { configured: true, reachable: true, loggedIn: true, username: "guardarr" };
+  const fetchMock = stubFetch(status);
+
+  expect(await slskdStatus()).toEqual(status);
+  expect(fetchMock).toHaveBeenCalledWith("/api/slskd/status", {});
 });

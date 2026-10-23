@@ -49,6 +49,48 @@ export function unfollowArtist(id: string): Promise<void> {
   });
 }
 
+// Settings come back whole, one section per thing to set up.
+export type Settings = {
+  slskd: SlskdSettings;
+};
+
+// The saved API key never comes back; hasApiKey says whether there is one.
+export type SlskdSettings = {
+  url: string;
+  hasApiKey: boolean;
+};
+
+export function settings(fetch = globalThis.fetch): Promise<Settings> {
+  return request("/api/settings", "loading the settings failed", { fetch });
+}
+
+// SettingsChanges are the sections to save; the ones left out stay as they
+// are, and so does the saved slskd key when apiKey is left out.
+export type SettingsChanges = {
+  slskd?: { url: string; apiKey?: string };
+};
+
+export function saveSettings(changes: SettingsChanges): Promise<void> {
+  return request("/api/settings", "saving the settings failed", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+}
+
+// problem says, in words to show, why a configured slskd is not reachable.
+export type SlskdStatus = {
+  configured: boolean;
+  reachable: boolean;
+  loggedIn: boolean;
+  username?: string;
+  problem?: string;
+};
+
+export function slskdStatus(): Promise<SlskdStatus> {
+  return request("/api/slskd/status", "checking slskd failed");
+}
+
 // Options are fetch's own, plus the fetch to call them with.
 type Options = RequestInit & { fetch?: typeof globalThis.fetch };
 

@@ -25,10 +25,8 @@ is created as `guardarr.db` in the working directory; override the path with
 `GUARDARR_DB`.
 
 Downloads go through [slskd](https://github.com/slskd/slskd), which is
-optional. To connect it, set `GUARDARR_SLSKD_URL` to its web address,
-including any URL base (e.g. `http://localhost:5030`), and
-`GUARDARR_SLSKD_API_KEY` to one of its API keys. `GET /api/slskd/status`
-tells whether guardarr reaches it and whether it is logged in to Soulseek.
+optional. Connect it on the Settings page with its web address and one of its
+API keys; guardarr keeps them in its database.
 
 ## Test
 

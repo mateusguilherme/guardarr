@@ -43,3 +43,19 @@ it("leads home from the brand", () => {
 
   expect(screen.getByRole("link", { name: "guardarr" }).getAttribute("href")).toBe("/");
 });
+
+it("leads to the settings", () => {
+  renderLayout();
+
+  const link = screen.getByRole("link", { name: "Settings" });
+
+  expect(link.getAttribute("href")).toBe("/settings");
+  expect(link.getAttribute("aria-current")).toBeNull();
+});
+
+it("marks the settings as the current page while on them", () => {
+  page.route.id = "/settings";
+  renderLayout();
+
+  expect(screen.getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe("page");
+});

@@ -28,13 +28,6 @@ func main() {
 	addr := getEnv("GUARDARR_ADDR", ":8686")
 	dbPath := getEnv("GUARDARR_DB", "guardarr.db")
 
-	// slskd is optional: without its address guardarr only follows artists.
-	var sk *slskd.Client
-
-	if slskdURL := getEnv("GUARDARR_SLSKD_URL", ""); slskdURL != "" {
-		sk = slskd.NewClient(slskdURL, getEnv("GUARDARR_SLSKD_API_KEY", ""))
-	}
-
 	st, err := store.Open(dbPath)
 
 	if err != nil {
@@ -42,6 +35,13 @@ func main() {
 	}
 
 	defer st.Close()
+
+	// slskd is set up from the settings page; until then it has no address.
+	saved, err := st.SlskdSettings(context.Background())
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	dist, err := fs.Sub(frontend, "frontend/dist")
 
@@ -51,7 +51,7 @@ func main() {
 
 	handler := server.New(server.Deps{
 		MusicBrainz: musicbrainz.NewClient(),
-		Slskd:       sk,
+		Slskd:       slskd.NewClient(saved.URL, saved.APIKey),
 		Store:       st,
 		Static:      dist,
 	})

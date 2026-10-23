@@ -6,13 +6,35 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
+
+// ErrNotConfigured is what every call returns while the client has no slskd
+// to talk to.
+var ErrNotConfigured = errors.New("slskd: not configured")
+
+// StatusError is a request slskd answered with an error status, with the
+// reason it gave, if any.
+type StatusError struct {
+	Code   int
+	Status string // e.g. "401 Unauthorized"
+	Reason string
+}
+
+func (e *StatusError) Error() string {
+	if e.Reason == "" {
+		return "slskd: unexpected status " + e.Status
+	}
+
+	return "slskd: unexpected status " + e.Status + ": " + e.Reason
+}
 
 // ServerState is slskd's connection to the Soulseek network: it can only
 // search and download while logged in.
@@ -69,25 +91,55 @@ type Failure struct {
 }
 
 type Client struct {
-	apiURL string
+	http *http.Client
+
+	mu     sync.RWMutex
+	apiURL string // empty while there is no slskd to talk to
 	apiKey string
-	http   *http.Client
 }
 
-// NewClient talks to the slskd at baseURL, its web address including any
-// URL base it is set up with. apiKey goes in every request, unless it is
-// empty for an slskd that runs without authentication.
+// NewClient returns a client configured as Configure describes.
 func NewClient(baseURL, apiKey string) *Client {
-	return &Client{
-		apiURL: strings.TrimSuffix(baseURL, "/") + "/api/v0",
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 15 * time.Second},
+	c := &Client{http: &http.Client{Timeout: 15 * time.Second}}
+	c.Configure(baseURL, apiKey)
+
+	return c
+}
+
+// Configure points the client at the slskd at baseURL, its web address
+// including any URL base it is set up with; an empty baseURL leaves the
+// client with no slskd. apiKey goes in every request, unless it is empty
+// for an slskd that runs without authentication. Requests already on their
+// way finish against the previous slskd.
+func (c *Client) Configure(baseURL, apiKey string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.apiURL = ""
+
+	if baseURL != "" {
+		c.apiURL = strings.TrimSuffix(baseURL, "/") + "/api/v0"
 	}
+
+	c.apiKey = apiKey
+}
+
+func (c *Client) settings() (apiURL, apiKey string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.apiURL, c.apiKey
 }
 
 // do sends one request to the API, with in as its JSON body unless nil, and
 // decodes the JSON response into out unless nil.
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
+	apiURL, apiKey := c.settings()
+
+	if apiURL == "" {
+		return ErrNotConfigured
+	}
+
 	var body io.Reader
 
 	if in != nil {
@@ -100,7 +152,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		body = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.apiURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, apiURL+path, body)
 
 	if err != nil {
 		return err
@@ -110,8 +162,8 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	if c.apiKey != "" {
-		req.Header.Set("X-API-Key", c.apiKey)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 
 	resp, err := c.http.Do(req)
@@ -123,11 +175,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		if reason := refusal(resp.Body); reason != "" {
-			return fmt.Errorf("slskd: unexpected status %s: %s", resp.Status, reason)
-		}
-
-		return fmt.Errorf("slskd: unexpected status %s", resp.Status)
+		return &StatusError{Code: resp.StatusCode, Status: resp.Status, Reason: refusal(resp.Body)}
 	}
 
 	if out == nil {

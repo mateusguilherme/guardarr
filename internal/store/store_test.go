@@ -232,3 +232,38 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 		t.Fatal("want an error opening a database from a newer build, got nil")
 	}
 }
+
+func TestSlskdSettingsStartEmpty(t *testing.T) {
+	settings, err := testStore(t).SlskdSettings(context.Background())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if settings != (SlskdSettings{}) {
+		t.Errorf("settings = %+v, want none", settings)
+	}
+}
+
+func TestSaveSlskdSettingsReplacesThem(t *testing.T) {
+	s := testStore(t)
+
+	for _, saved := range []SlskdSettings{
+		{URL: "http://localhost:5030", APIKey: "a-key-of-at-least-16-chars"},
+		{URL: "http://nas.lan:5030/slskd", APIKey: ""},
+	} {
+		if err := s.SaveSlskdSettings(context.Background(), saved); err != nil {
+			t.Fatal(err)
+		}
+
+		settings, err := s.SlskdSettings(context.Background())
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if settings != saved {
+			t.Errorf("settings = %+v, want %+v", settings, saved)
+		}
+	}
+}

@@ -4,6 +4,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
@@ -15,6 +16,12 @@ var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS artists (id TEXT PRIMARY KEY) STRICT`,
 	`ALTER TABLE artists ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE artists ADD COLUMN disambiguation TEXT NOT NULL DEFAULT ''`,
+	// One row at most: there is one slskd to reach.
+	`CREATE TABLE slskd_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		url TEXT NOT NULL,
+		api_key TEXT NOT NULL
+	) STRICT`,
 }
 
 // Artist is a followed artist as stored locally. It mirrors the fields
@@ -23,6 +30,13 @@ type Artist struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Disambiguation string `json:"disambiguation,omitempty"`
+}
+
+// SlskdSettings is how guardarr reaches slskd. An empty URL means slskd is
+// not set up.
+type SlskdSettings struct {
+	URL    string
+	APIKey string
 }
 
 // Store is the SQLite-backed persistence layer.
@@ -129,4 +143,32 @@ func (s *Store) Artists(ctx context.Context) ([]Artist, error) {
 	}
 
 	return artists, rows.Err()
+}
+
+// SlskdSettings returns the saved slskd settings, empty until first saved.
+func (s *Store) SlskdSettings(ctx context.Context) (SlskdSettings, error) {
+	var settings SlskdSettings
+
+	err := s.db.QueryRowContext(ctx, `SELECT url, api_key FROM slskd_settings`).
+		Scan(&settings.URL, &settings.APIKey)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return SlskdSettings{}, nil
+	}
+
+	return settings, err
+}
+
+// SaveSlskdSettings replaces the saved slskd settings.
+func (s *Store) SaveSlskdSettings(ctx context.Context, settings SlskdSettings) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO slskd_settings (id, url, api_key) VALUES (1, ?, ?)
+		 ON CONFLICT (id) DO UPDATE SET
+		   url = excluded.url,
+		   api_key = excluded.api_key`,
+		settings.URL, settings.APIKey,
+	)
+
+	return err
 }

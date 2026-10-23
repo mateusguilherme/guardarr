@@ -2,6 +2,8 @@ package slskd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -315,5 +317,68 @@ func TestUnexpectedStatusWithoutReason(t *testing.T) {
 
 	if err == nil || err.Error() != "slskd: unexpected status 401 Unauthorized" {
 		t.Errorf("err = %v, want the bare status", err)
+	}
+}
+
+func TestStatusErrorCarriesTheCode(t *testing.T) {
+	sk := fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	_, err := sk.Server(context.Background())
+
+	var refused *StatusError
+
+	if !errors.As(err, &refused) || refused.Code != http.StatusUnauthorized {
+		t.Errorf("err = %v, want a StatusError with code 401", err)
+	}
+}
+
+func TestUnconfiguredClientCallsNothing(t *testing.T) {
+	sk := NewClient("", testKey)
+
+	if _, err := sk.Server(context.Background()); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("err = %v, want ErrNotConfigured", err)
+	}
+}
+
+func TestConfigureSwitchesTheSlskd(t *testing.T) {
+	var hits [2]int
+
+	fakes := [2]*httptest.Server{}
+
+	for i := range fakes {
+		fakes[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits[i]++
+
+			if got := r.Header.Get("X-API-Key"); got != fmt.Sprint("key-", i) {
+				t.Errorf("slskd %d got X-API-Key %q", i, got)
+			}
+
+			w.Write([]byte(`{}`))
+		}))
+		t.Cleanup(fakes[i].Close)
+	}
+
+	sk := NewClient(fakes[0].URL, "key-0")
+
+	if _, err := sk.Server(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	sk.Configure(fakes[1].URL, "key-1")
+
+	if _, err := sk.Server(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	sk.Configure("", "")
+
+	if _, err := sk.Server(context.Background()); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("err = %v, want ErrNotConfigured once cleared", err)
+	}
+
+	if hits != [2]int{1, 1} {
+		t.Errorf("hits = %v, want one request to each slskd", hits)
 	}
 }

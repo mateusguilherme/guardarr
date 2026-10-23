@@ -3,7 +3,6 @@ package server_test
 import (
 	"encoding/json"
 	"io"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -20,15 +19,8 @@ import (
 
 // newApp serves the application against a fake MusicBrainz handler, a fresh
 // temporary database, and an in-memory frontend, all cleaned up with the test.
-// slskd is left unconfigured.
+// slskd starts out not set up, as on a first run.
 func newApp(t *testing.T, fakeMusicBrainz http.HandlerFunc) *httptest.Server {
-	t.Helper()
-
-	return newAppWithSlskd(t, fakeMusicBrainz, nil)
-}
-
-// newAppWithSlskd is newApp with sk as its slskd.
-func newAppWithSlskd(t *testing.T, fakeMusicBrainz http.HandlerFunc, sk *slskd.Client) *httptest.Server {
 	t.Helper()
 
 	fake := httptest.NewServer(fakeMusicBrainz)
@@ -51,7 +43,7 @@ func newAppWithSlskd(t *testing.T, fakeMusicBrainz http.HandlerFunc, sk *slskd.C
 
 	app := httptest.NewServer(server.New(server.Deps{
 		MusicBrainz: musicbrainz.NewClientWithURL(fake.URL),
-		Slskd:       sk,
+		Slskd:       slskd.NewClient("", ""),
 		Store:       st,
 		Static:      static,
 	}))
@@ -77,7 +69,20 @@ func get(t *testing.T, url string) *http.Response {
 func put(t *testing.T, url, body string) *http.Response {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+	return send(t, http.MethodPut, url, body)
+}
+
+func patch(t *testing.T, url, body string) *http.Response {
+	t.Helper()
+
+	return send(t, http.MethodPatch, url, body)
+}
+
+// send makes a method request to url with body as its JSON.
+func send(t *testing.T, method, url, body string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 
 	if err != nil {
 		t.Fatal(err)
@@ -525,17 +530,61 @@ func TestNeverCachesTheAppVersion(t *testing.T) {
 	}
 }
 
-// fakeSlskd serves handler as the slskd API and returns a client for it.
-func fakeSlskd(t *testing.T, handler http.HandlerFunc) *slskd.Client {
+// fakeSlskd serves handler as the slskd API and returns its address.
+func fakeSlskd(t *testing.T, handler http.HandlerFunc) string {
 	t.Helper()
 
 	fake := httptest.NewServer(handler)
 	t.Cleanup(fake.Close)
 
-	return slskd.NewClient(fake.URL, "")
+	return fake.URL
 }
 
-func slskdStatus(t *testing.T, app *httptest.Server) map[string]bool {
+type slskdSettings struct {
+	URL       string `json:"url"`
+	HasAPIKey bool   `json:"hasApiKey"`
+}
+
+// savedSlskdSettings returns the slskd section of the saved settings.
+func savedSlskdSettings(t *testing.T, app *httptest.Server) slskdSettings {
+	t.Helper()
+
+	resp := get(t, app.URL+"/api/settings")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var settings struct {
+		Slskd slskdSettings `json:"slskd"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
+		t.Fatal(err)
+	}
+
+	return settings.Slskd
+}
+
+// saveSettings saves the settings in body, failing the test unless the app
+// takes them.
+func saveSettings(t *testing.T, app *httptest.Server, body string) {
+	t.Helper()
+
+	if resp := patch(t, app.URL+"/api/settings", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("saving %s: status = %d, want %d", body, resp.StatusCode, http.StatusNoContent)
+	}
+}
+
+type slskdConnection struct {
+	Configured bool   `json:"configured"`
+	Reachable  bool   `json:"reachable"`
+	LoggedIn   bool   `json:"loggedIn"`
+	Username   string `json:"username"`
+	Problem    string `json:"problem"`
+}
+
+func slskdStatus(t *testing.T, app *httptest.Server) slskdConnection {
 	t.Helper()
 
 	resp := get(t, app.URL+"/api/slskd/status")
@@ -544,52 +593,195 @@ func slskdStatus(t *testing.T, app *httptest.Server) map[string]bool {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var status map[string]bool
+	var connection slskdConnection
 
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&connection); err != nil {
 		t.Fatal(err)
 	}
 
-	return status
+	return connection
 }
 
-func TestSlskdStatusWithoutSlskd(t *testing.T) {
+func TestSlskdSettingsStartEmpty(t *testing.T) {
 	app := newApp(t, noMusicBrainz(t))
 
-	want := map[string]bool{"configured": false, "connected": false, "loggedIn": false}
+	if got := savedSlskdSettings(t, app); got != (slskdSettings{}) {
+		t.Errorf("settings = %+v, want none", got)
+	}
 
-	if got := slskdStatus(t, app); !maps.Equal(got, want) {
-		t.Errorf("status = %v, want %v", got, want)
+	if got := slskdStatus(t, app); got != (slskdConnection{}) {
+		t.Errorf("status = %+v, want not configured", got)
 	}
 }
 
-func TestSlskdStatusReportsTheConnection(t *testing.T) {
-	sk := fakeSlskd(t, func(w http.ResponseWriter, r *http.Request) {
+func TestSlskdSettingsNeverShowTheKey(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	saveSettings(t, app, `{"slskd": {"url": " http://localhost:5030 ", "apiKey": "secret-key-0123456789"}}`)
+
+	resp := get(t, app.URL+"/api/settings")
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(body), "secret-key") {
+		t.Errorf("the settings show the API key: %s", body)
+	}
+
+	want := slskdSettings{URL: "http://localhost:5030", HasAPIKey: true}
+
+	if got := savedSlskdSettings(t, app); got != want {
+		t.Errorf("settings = %+v, want %+v", got, want)
+	}
+}
+
+func TestSavingSlskdSettingsKeepsTheKeyUnlessGivenOne(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	saveSettings(t, app, `{"slskd": {"url": "http://localhost:5030", "apiKey": "secret-key-0123456789"}}`)
+	saveSettings(t, app, `{"slskd": {"url": "http://nas.lan:5030"}}`)
+
+	if got := savedSlskdSettings(t, app); !got.HasAPIKey {
+		t.Error("changing only the address dropped the key")
+	}
+
+	saveSettings(t, app, `{"slskd": {"url": "http://nas.lan:5030", "apiKey": ""}}`)
+
+	if got := savedSlskdSettings(t, app); got.HasAPIKey {
+		t.Error("an empty key did not clear the saved one")
+	}
+}
+
+func TestSavingSettingsLeavesOutSectionsAsTheyAre(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	saveSettings(t, app, `{"slskd": {"url": "http://localhost:5030", "apiKey": "secret-key-0123456789"}}`)
+	saveSettings(t, app, `{}`)
+
+	want := slskdSettings{URL: "http://localhost:5030", HasAPIKey: true}
+
+	if got := savedSlskdSettings(t, app); got != want {
+		t.Errorf("settings = %+v, want %+v", got, want)
+	}
+}
+
+func TestSavingSettingsRefusesBadOnes(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	for _, body := range []string{
+		`{"slskd": {"url": "localhost:5030"}}`,
+		`{"slskd": {"url": "ftp://localhost:5030"}}`,
+		`{"slskd": {"url": "http://"}}`,
+		`{"slsk": {"url": "http://localhost:5030"}}`,
+		`{"slskd": {"url": "http://localhost:5030", "key": "secret-key-0123456789"}}`,
+		`not json`,
+	} {
+		if resp := patch(t, app.URL+"/api/settings", body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("saving %s: status = %d, want %d", body, resp.StatusCode, http.StatusBadRequest)
+		}
+	}
+
+	if got := savedSlskdSettings(t, app); got != (slskdSettings{}) {
+		t.Errorf("settings = %+v, want none after refused saves", got)
+	}
+}
+
+func TestSavedSlskdSettingsTakeEffectAtOnce(t *testing.T) {
+	address := fakeSlskd(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v0/server" {
 			t.Errorf("path = %q, want %q", r.URL.Path, "/api/v0/server")
 		}
 
-		w.Write([]byte(`{"state": "Connected", "isConnected": true, "isLoggedIn": false}`))
+		if got := r.Header.Get("X-API-Key"); got != "secret-key-0123456789" {
+			t.Errorf("X-API-Key = %q, want the saved key", got)
+		}
+
+		w.Write([]byte(`{"state": "Connected, LoggedIn", "username": "guardarr", "isConnected": true, "isLoggedIn": true}`))
 	})
 
-	app := newAppWithSlskd(t, noMusicBrainz(t), sk)
+	app := newApp(t, noMusicBrainz(t))
 
-	want := map[string]bool{"configured": true, "connected": true, "loggedIn": false}
+	saveSettings(t, app, `{"slskd": {"url": "`+address+`", "apiKey": "secret-key-0123456789"}}`)
 
-	if got := slskdStatus(t, app); !maps.Equal(got, want) {
-		t.Errorf("status = %v, want %v", got, want)
+	want := slskdConnection{Configured: true, Reachable: true, LoggedIn: true, Username: "guardarr"}
+
+	if got := slskdStatus(t, app); got != want {
+		t.Errorf("status = %+v, want %+v", got, want)
+	}
+
+	saveSettings(t, app, `{"slskd": {"url": ""}}`)
+
+	if got := slskdStatus(t, app); got != (slskdConnection{}) {
+		t.Errorf("status = %+v, want not configured once the address is cleared", got)
 	}
 }
 
-func TestSlskdStatusReportsUnreachableSlskd(t *testing.T) {
-	sk := fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	})
+func TestSlskdStatusSaysWhatIsWrong(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
 
-	app := newAppWithSlskd(t, noMusicBrainz(t), sk)
-	resp := get(t, app.URL+"/api/slskd/status")
+	for _, tc := range []struct {
+		name    string
+		address string
+		want    slskdConnection
+	}{
+		{
+			name: "not logged in",
+			address: fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"state": "Disconnected", "isConnected": false, "isLoggedIn": false}`))
+			}),
+			want: slskdConnection{Configured: true, Reachable: true},
+		},
+		{
+			name: "wrong key",
+			address: fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+			}),
+			want: slskdConnection{Configured: true, Problem: "slskd refused the API key."},
+		},
+		{
+			name:    "no slskd api",
+			address: fakeSlskd(t, http.NotFound),
+			want:    slskdConnection{Configured: true, Problem: "There is no slskd API at this address."},
+		},
+		{
+			name: "slskd failing",
+			address: fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`"The database is locked"`))
+			}),
+			want: slskdConnection{
+				Configured: true,
+				Problem:    "slskd answered 500 Internal Server Error: The database is locked",
+			},
+		},
+		{
+			name: "something else",
+			address: fakeSlskd(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`<!doctype html><title>router login</title>`))
+			}),
+			want: slskdConnection{
+				Configured: true,
+				Problem:    "Something answered at this address, but not the way slskd does.",
+			},
+		},
+		{
+			name:    "nothing there",
+			address: closed.URL,
+			want:    slskdConnection{Configured: true, Problem: "Nothing answered at this address."},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newApp(t, noMusicBrainz(t))
 
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+			saveSettings(t, app, `{"slskd": {"url": "`+tc.address+`", "apiKey": "secret-key-0123456789"}}`)
+
+			if got := slskdStatus(t, app); got != tc.want {
+				t.Errorf("status = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
