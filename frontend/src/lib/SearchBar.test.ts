@@ -53,7 +53,7 @@ it("searches in place on the home", async () => {
 it("goes home to show a search started on another page", async () => {
   const fetchMock = stubFetch();
 
-  page.route.id = "/artist/[id]";
+  page.route.id = "/artist/[id=mbid]";
   renderBar();
 
   await userEvent.type(screen.getByPlaceholderText("Search an artist…"), "caetano{Enter}");

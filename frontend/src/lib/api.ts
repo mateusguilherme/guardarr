@@ -91,11 +91,23 @@ export function slskdStatus(): Promise<SlskdStatus> {
   return request("/api/slskd/status", "checking slskd failed");
 }
 
+// ApiError is a response that was not ok, keeping its status so a caller
+// can tell a missing thing (404) from a failure.
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 // Options are fetch's own, plus the fetch to call them with.
 type Options = RequestInit & { fetch?: typeof globalThis.fetch };
 
 // request fetches an API path and decodes its body, unless the response is
-// not ok: then it throws an error that says what failed and with which status.
+// not ok: then it throws an ApiError that says what failed and with which
+// status.
 async function request<T>(
   path: string,
   failure: string,
@@ -104,7 +116,7 @@ async function request<T>(
   const response = await fetch(path, init);
 
   if (!response.ok) {
-    throw new Error(`${failure} (${response.status})`);
+    throw new ApiError(`${failure} (${response.status})`, response.status);
   }
 
   // following and unfollowing answer 204, with no body to decode

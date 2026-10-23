@@ -135,6 +135,11 @@ func lookupArtist(mb *musicbrainz.Client) http.HandlerFunc {
 		id := r.PathValue("id")
 		artist, err := mb.Artist(r.Context(), id)
 
+		if errors.Is(err, musicbrainz.ErrNotFound) {
+			http.Error(w, "no such artist", http.StatusNotFound)
+			return
+		}
+
 		if err != nil {
 			log.Printf("musicbrainz artist %q: %v", id, err)
 			http.Error(w, "loading the artist failed", http.StatusBadGateway)
@@ -149,6 +154,11 @@ func artistReleases(mb *musicbrainz.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		releases, err := mb.ArtistReleases(r.Context(), id)
+
+		if errors.Is(err, musicbrainz.ErrNotFound) {
+			http.Error(w, "no such artist", http.StatusNotFound)
+			return
+		}
 
 		if err != nil {
 			log.Printf("musicbrainz releases for %q: %v", id, err)

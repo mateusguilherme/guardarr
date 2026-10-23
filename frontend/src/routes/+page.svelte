@@ -37,7 +37,7 @@
   <ul class="artists">
     {#each artists as artist, i (artist.id)}
       <li style="--i: {i}">
-        <a class="open-artist" href={resolve("/artist/[id]", { id: artist.id })}>
+        <a class="open-artist" href={resolve("/artist/[id=mbid]", { id: artist.id })}>
           <span class="avatar" aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
           <div class="who">
             <span class="name">{artist.name}</span>

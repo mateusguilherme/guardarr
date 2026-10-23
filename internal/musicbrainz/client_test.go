@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// caetanoID is shaped like an MBID, as the artist lookups require.
+const caetanoID = "5c9b2a1e-6f3d-4a8b-9e07-1d2c3b4a5f60"
 
 // testClient returns a client with a short throttle interval and backoff
 // so tests do not sleep for the real MusicBrainz spacing.
@@ -87,8 +91,8 @@ func TestSearchArtistsNormalizesNullToEmpty(t *testing.T) {
 
 func TestArtist(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Path; got != "/artist/abc" {
-			t.Errorf("path = %q, want %q", got, "/artist/abc")
+		if got := r.URL.Path; got != "/artist/"+caetanoID {
+			t.Errorf("path = %q, want %q", got, "/artist/"+caetanoID)
 		}
 
 		if got := r.URL.Query().Get("fmt"); got != "json" {
@@ -100,7 +104,7 @@ func TestArtist(t *testing.T) {
 
 	defer fake.Close()
 
-	artist, err := testClient(fake.URL).Artist(context.Background(), "abc")
+	artist, err := testClient(fake.URL).Artist(context.Background(), caetanoID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -115,13 +119,48 @@ func TestArtist(t *testing.T) {
 
 func TestArtistUnexpectedStatus(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
 	defer fake.Close()
 
-	if _, err := testClient(fake.URL).Artist(context.Background(), "nope"); err == nil {
-		t.Fatal("want an error on a 404 response, got nil")
+	_, err := testClient(fake.URL).Artist(context.Background(), caetanoID)
+
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want an unexpected status", err)
+	}
+}
+
+func TestUnknownArtistIsNotFound(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error": "Not Found"}`))
+	}))
+
+	defer fake.Close()
+
+	if _, err := testClient(fake.URL).Artist(context.Background(), caetanoID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want %v", err, ErrNotFound)
+	}
+}
+
+func TestMalformedIDsAreNotFoundWithoutAsking(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("MusicBrainz should not be called")
+	}))
+
+	defer fake.Close()
+
+	c := testClient(fake.URL)
+
+	for _, id := range []string{"", "abc", "not-an-id", caetanoID + " OR primarytype:album", strings.ToUpper(caetanoID)} {
+		if _, err := c.Artist(context.Background(), id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Artist(%q) err = %v, want %v", id, err, ErrNotFound)
+		}
+
+		if _, err := c.ArtistReleases(context.Background(), id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ArtistReleases(%q) err = %v, want %v", id, err, ErrNotFound)
+		}
 	}
 }
 
@@ -132,7 +171,7 @@ func TestArtistReleasesKeepsOfficialAlbumsNewestFirst(t *testing.T) {
 		}
 
 		q := r.URL.Query()
-		want := "arid:abc AND primarytype:album AND status:official AND -secondarytype:*"
+		want := "arid:" + caetanoID + " AND primarytype:album AND status:official AND -secondarytype:*"
 
 		if got := q.Get("query"); got != want {
 			t.Errorf("query = %q, want %q", got, want)
@@ -155,7 +194,7 @@ func TestArtistReleasesKeepsOfficialAlbumsNewestFirst(t *testing.T) {
 
 	defer fake.Close()
 
-	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), caetanoID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +230,7 @@ func TestArtistReleasesPaginates(t *testing.T) {
 
 	defer fake.Close()
 
-	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), caetanoID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +257,7 @@ func TestArtistReleasesUnexpectedStatus(t *testing.T) {
 
 	defer fake.Close()
 
-	if _, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc"); err == nil {
+	if _, err := testClient(fake.URL).ArtistReleases(context.Background(), caetanoID); err == nil {
 		t.Fatal("want an error on a 503 response, got nil")
 	}
 }
@@ -230,7 +269,7 @@ func TestArtistReleasesNormalizesNullToEmpty(t *testing.T) {
 
 	defer fake.Close()
 
-	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), "abc")
+	releases, err := testClient(fake.URL).ArtistReleases(context.Background(), caetanoID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +298,7 @@ func TestArtistServesRepeatsFromCache(t *testing.T) {
 	c := testClient(fake.URL)
 
 	for range 2 {
-		artist, err := c.Artist(context.Background(), "abc")
+		artist, err := c.Artist(context.Background(), caetanoID)
 
 		if err != nil {
 			t.Fatal(err)
@@ -290,7 +329,7 @@ func TestArtistReleasesServesRepeatsFromCache(t *testing.T) {
 	want := []Release{{ID: "rg1", Title: "Transa", FirstReleaseDate: "1972"}}
 
 	for range 2 {
-		releases, err := c.ArtistReleases(context.Background(), "abc")
+		releases, err := c.ArtistReleases(context.Background(), caetanoID)
 
 		if err != nil {
 			t.Fatal(err)
@@ -321,7 +360,7 @@ func TestArtistReleasesCacheExpires(t *testing.T) {
 	c.releases = newTTLCache[[]Release](10 * time.Millisecond)
 
 	for range 2 {
-		if _, err := c.ArtistReleases(context.Background(), "abc"); err != nil {
+		if _, err := c.ArtistReleases(context.Background(), caetanoID); err != nil {
 			t.Fatal(err)
 		}
 
@@ -469,7 +508,7 @@ func TestBusyMusicBrainzIsGivenUpOn(t *testing.T) {
 
 	defer fake.Close()
 
-	if _, err := testClient(fake.URL).Artist(context.Background(), "abc"); !errors.Is(err, errBusy) {
+	if _, err := testClient(fake.URL).Artist(context.Background(), caetanoID); !errors.Is(err, errBusy) {
 		t.Errorf("err = %v, want %v", err, errBusy)
 	}
 
@@ -489,7 +528,7 @@ func TestOtherFailuresAreNotAskedAgain(t *testing.T) {
 
 	defer fake.Close()
 
-	if _, err := testClient(fake.URL).Artist(context.Background(), "abc"); err == nil {
+	if _, err := testClient(fake.URL).Artist(context.Background(), caetanoID); err == nil {
 		t.Fatal("want an error on a 500 response, got nil")
 	}
 
@@ -513,7 +552,7 @@ func TestBusyWaitHonorsCancellation(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := c.Artist(ctx, "abc")
+	_, err := c.Artist(ctx, caetanoID)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want %v", err, context.DeadlineExceeded)

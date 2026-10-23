@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  ApiError,
   artistReleases,
   followArtist,
   lookupArtist,
@@ -68,6 +69,15 @@ it("throws when the artist lookup fails", async () => {
   await expect(lookupArtist("abc")).rejects.toThrow(
     "loading the artist failed (502)",
   );
+});
+
+it("keeps the status of a failed response", async () => {
+  stubFetch(null, false, 404);
+
+  const failure = lookupArtist("abc");
+
+  await expect(failure).rejects.toBeInstanceOf(ApiError);
+  await expect(failure).rejects.toMatchObject({ status: 404 });
 });
 
 it("fetches an artist's releases", async () => {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -121,6 +122,12 @@ func (c *Client) throttle(ctx context.Context) error {
 // errBusy is MusicBrainz turning a request away for now.
 var errBusy = errors.New("musicbrainz: busy (503 Service Unavailable)")
 
+// ErrNotFound is an id that names nothing on MusicBrainz.
+var ErrNotFound = errors.New("musicbrainz: not found")
+
+// mbid is the shape of a MusicBrainz id: a lowercase UUID.
+var mbid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 // getJSON requests path and decodes the JSON response into out. While
 // MusicBrainz is busy it asks again, waiting twice as long each time.
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
@@ -171,6 +178,10 @@ func (c *Client) fetchJSON(ctx context.Context, address string, out any) error {
 		return errBusy
 	}
 
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("musicbrainz: unexpected status %s", resp.Status)
 	}
@@ -184,6 +195,10 @@ func (c *Client) fetchJSON(ctx context.Context, address string, out any) error {
 
 // Artist looks up one artist by its MBID, served from cache when fresh.
 func (c *Client) Artist(ctx context.Context, id string) (Artist, error) {
+	if !mbid.MatchString(id) {
+		return Artist{}, ErrNotFound
+	}
+
 	if artist, ok := c.artists.get(id); ok {
 		return artist, nil
 	}
@@ -225,7 +240,15 @@ const searchLimit = 100
 // It searches release groups instead of browsing them: "official" is a
 // status on individual releases, which a browse cannot filter by, so
 // bootleg-only groups — garage demos, say — would slip in.
+//
+// The id goes into the search query as is, so anything but an MBID is
+// refused first: other text can change what the query asks for, and
+// "arid:not-an-id" matched over two million release groups to page through.
 func (c *Client) ArtistReleases(ctx context.Context, artistID string) ([]Release, error) {
+	if !mbid.MatchString(artistID) {
+		return nil, ErrNotFound
+	}
+
 	if releases, ok := c.releases.get(artistID); ok {
 		return releases, nil
 	}

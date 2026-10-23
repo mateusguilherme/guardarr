@@ -17,6 +17,9 @@ import (
 	"github.com/mateusguilherme/guardarr/internal/store"
 )
 
+// caetanoID is shaped like an MBID, as the artist routes require.
+const caetanoID = "5c9b2a1e-6f3d-4a8b-9e07-1d2c3b4a5f60"
+
 // newApp serves the application against a fake MusicBrainz handler, a fresh
 // temporary database, and an in-memory frontend, all cleaned up with the test.
 // slskd starts out not set up, as on a first run.
@@ -170,14 +173,14 @@ func TestSearchArtistsReportsUpstreamFailure(t *testing.T) {
 
 func TestLookupArtistReturnsIt(t *testing.T) {
 	app := newApp(t, func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Path; got != "/artist/abc" {
-			t.Errorf("path = %q, want %q", got, "/artist/abc")
+		if got := r.URL.Path; got != "/artist/"+caetanoID {
+			t.Errorf("path = %q, want %q", got, "/artist/"+caetanoID)
 		}
 
 		w.Write([]byte(`{"id": "abc", "name": "Caetano Veloso", "disambiguation": "Brazilian singer"}`))
 	})
 
-	resp := get(t, app.URL+"/api/artists/abc")
+	resp := get(t, app.URL+"/api/artists/"+caetanoID)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -198,26 +201,48 @@ func TestLookupArtistReturnsIt(t *testing.T) {
 
 func TestLookupArtistReportsUpstreamFailure(t *testing.T) {
 	app := newApp(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 
-	resp := get(t, app.URL+"/api/artists/abc")
+	resp := get(t, app.URL+"/api/artists/"+caetanoID)
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
 	}
 }
 
+func TestLookupArtistUnknownToMusicBrainzIsNotFound(t *testing.T) {
+	app := newApp(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	resp := get(t, app.URL+"/api/artists/"+caetanoID)
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestMalformedArtistIDIsNotFound(t *testing.T) {
+	app := newApp(t, noMusicBrainz(t))
+
+	for _, path := range []string{"/api/artists/not-an-id", "/api/artists/not-an-id/releases"} {
+		if resp := get(t, app.URL+path); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want %d", path, resp.StatusCode, http.StatusNotFound)
+		}
+	}
+}
+
 func TestArtistReleasesReturnsResults(t *testing.T) {
 	app := newApp(t, func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("query"); !strings.Contains(got, "arid:abc") {
-			t.Errorf("query = %q, want it to mention arid:abc", got)
+		if got := r.URL.Query().Get("query"); !strings.Contains(got, "arid:"+caetanoID) {
+			t.Errorf("query = %q, want it to mention the artist id", got)
 		}
 
 		w.Write([]byte(`{"count": 1, "release-groups": [{"id": "rg1", "title": "Transa", "first-release-date": "1972-01-01"}]}`))
 	})
 
-	resp := get(t, app.URL+"/api/artists/abc/releases")
+	resp := get(t, app.URL+"/api/artists/"+caetanoID+"/releases")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -245,7 +270,7 @@ func TestArtistReleasesReportsUpstreamFailure(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 
-	resp := get(t, app.URL+"/api/artists/abc/releases")
+	resp := get(t, app.URL+"/api/artists/"+caetanoID+"/releases")
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)

@@ -7,6 +7,7 @@ import { load } from "./+page";
 
 type StubOptions = {
   artist?: unknown;
+  artistStatus?: number;
   followed?: unknown;
   followedOk?: boolean;
 };
@@ -15,6 +16,7 @@ type StubOptions = {
 // through data, as the load function hands them over.
 function stubFetch({
   artist = {},
+  artistStatus = 200,
   followed = [],
   followedOk = true,
 }: StubOptions = {}) {
@@ -27,7 +29,11 @@ function stubFetch({
       });
     }
 
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(artist) });
+    return Promise.resolve({
+      ok: artistStatus === 200,
+      status: artistStatus,
+      json: () => Promise.resolve(artist),
+    });
   });
 
   vi.stubGlobal("fetch", fetchMock);
@@ -164,4 +170,23 @@ it("a deep link still finds the name when the followed list fails", async () => 
   renderArtist();
 
   expect(await screen.findByRole("heading", { name: "Caetano Veloso" })).toBeDefined();
+});
+
+it("shows the not-found page for an id that names no artist", async () => {
+  stubFetch({ artistStatus: 404 });
+  renderArtist();
+
+  expect(await screen.findByRole("heading", { name: "Nothing kept here." })).toBeDefined();
+  expect(screen.queryByText("No official releases.")).toBeNull();
+});
+
+it("keeps the page when the lookup fails for another reason", async () => {
+  const fetchMock = stubFetch({ artistStatus: 502 });
+
+  renderArtist();
+
+  await vi.waitFor(() => expect(lookups(fetchMock)).toEqual(["/api/artists/abc"]));
+
+  expect(await screen.findByText("No official releases.")).toBeDefined();
+  expect(screen.queryByRole("heading", { name: "Nothing kept here." })).toBeNull();
 });
